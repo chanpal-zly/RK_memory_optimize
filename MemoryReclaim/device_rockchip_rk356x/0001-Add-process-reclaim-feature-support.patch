@@ -1,0 +1,506 @@
+From 54d8b068bd3587f6745aa126100978f82eca1697 Mon Sep 17 00:00:00 2001
+From: Bian Jin chen <kenjc.bian@rock-chips.com>
+Date: Tue, 22 Jun 2021 13:59:57 +0800
+Subject: [PATCH] Add process reclaim feature support.
+
+Signed-off-by: Bian Jin chen <kenjc.bian@rock-chips.com>
+Change-Id: I32313381e3969de841f519f729e4905255b32af2
+---
+ device.mk                                     |  15 +-
+ rk3566_32bit/BoardConfig.mk                   |   4 +-
+ rk3566_32bit/fstab.enableswap                 |   2 +
+ rk3566_32bit/fstab_32bit.in                   |   1 -
+ rk3566_32bit/init.rk356x.rc                   |  39 ++++
+ .../res/drawable-nodpi/default_wallpaper.jpg  | Bin 0 -> 783 bytes
+ .../default_wallpaper.jpg                     | Bin 0 -> 783 bytes
+ .../default_wallpaper.jpg                     | Bin 0 -> 783 bytes
+ .../base/core/res/res/values/config.xml       | 170 ++++++++++++++++++
+ .../SettingsProvider/res/values/defaults.xml  |  27 ++-
+ .../packages/SystemUI/res/values/config.xml   |  38 ++++
+ rk3566_32bit/rk3566_32bit.mk                  |  23 ++-
+ 12 files changed, 296 insertions(+), 23 deletions(-)
+ create mode 100644 rk3566_32bit/fstab.enableswap
+ create mode 100644 rk3566_32bit/init.rk356x.rc
+ create mode 100644 rk3566_32bit/overlay/frameworks/base/core/res/res/drawable-nodpi/default_wallpaper.jpg
+ create mode 100644 rk3566_32bit/overlay/frameworks/base/core/res/res/drawable-sw600dp-nodpi/default_wallpaper.jpg
+ create mode 100644 rk3566_32bit/overlay/frameworks/base/core/res/res/drawable-sw720dp-nodpi/default_wallpaper.jpg
+ create mode 100755 rk3566_32bit/overlay/frameworks/base/core/res/res/values/config.xml
+ create mode 100755 rk3566_32bit/overlay/frameworks/base/packages/SystemUI/res/values/config.xml
+
+diff --git a/device.mk b/device.mk
+index 01c115b..6a089eb 100644
+--- a/device.mk
++++ b/device.mk
+@@ -2,26 +2,15 @@
+ # Copyright (c) 2020 Rockchip Electronics Co., Ltd
+ #
+ PRODUCT_PACKAGES += \
++    rockchip.reclaimservice \
+     displayd \
+     libion
+ 
+-PRODUCT_PACKAGES += \
+-    RockchipPinnerService
+-
+ # Disable partial updates
+ PRODUCT_PROPERTY_OVERRIDES += \
+     debug.hwui.use_partial_updates=false
+ 
+-BOARD_SEPOLICY_DIRS += vendor/rockchip/hardware/interfaces/neuralnetworks/1.0/default/sepolicy
+-PRODUCT_PACKAGES += \
+-    public.libraries-rockchip \
+-    librknn_api_android \
+-    librknnhal_bridge.rockchip \
+-    rockchip.hardware.neuralnetworks@1.0-impl \
+-    rockchip.hardware.neuralnetworks@1.0-service
+-
+-$(call inherit-product-if-exists, vendor/rockchip/common/npu/npu.mk)
+-
++BOARD_PLAT_PRIVATE_SEPOLICY_DIR += hardware/rockchip/reclaimservice/sepolicy
+ BOARD_SEPOLICY_DIRS += device/rockchip/rk356x/sepolicy_vendor
+ TARGET_SYSTEM_PROP += device/rockchip/rk356x/rk356x.prop
+ # enable this for support f2fs with data partion
+diff --git a/rk3566_32bit/BoardConfig.mk b/rk3566_32bit/BoardConfig.mk
+index 2446c38..5db5a0a 100644
+--- a/rk3566_32bit/BoardConfig.mk
++++ b/rk3566_32bit/BoardConfig.mk
+@@ -17,7 +17,7 @@ include device/rockchip/rk356x/BoardConfig.mk
+ BUILD_WITH_GO_OPT := true
+ PRODUCT_UBOOT_CONFIG := rk3566
+ PRODUCT_KERNEL_DTS := rk3566-rk817-tablet
+-CAMERA_SUPPORT_AUTOFOCUS := true
++PRODUCT_KERNEL_CONFIG := rockchip_defconfig android-11-go.config low_ram.config
+ 
+ TARGET_ARCH := arm
+ TARGET_ARCH_VARIANT := armv8-2a
+@@ -30,6 +30,8 @@ TARGET_2ND_CPU_ABI :=
+ TARGET_2ND_CPU_ABI2 :=
+ TARGET_2ND_CPU_VARIANT :=
+ 
++PRODUCT_HAVE_RKAPPS := false
++
+ BOARD_USES_AB_IMAGE := false
+ BOARD_ROCKCHIP_VIRTUAL_AB_ENABLE := false
+ 
+diff --git a/rk3566_32bit/fstab.enableswap b/rk3566_32bit/fstab.enableswap
+new file mode 100644
+index 0000000..7c06186
+--- /dev/null
++++ b/rk3566_32bit/fstab.enableswap
+@@ -0,0 +1,2 @@
++# ZRAM config
++/dev/block/zram0            none  swap defaults zramsize=75%,max_comp_streams=8,zram_backingdev_size=256M
+diff --git a/rk3566_32bit/fstab_32bit.in b/rk3566_32bit/fstab_32bit.in
+index 7506fe7..e8ee70f 100755
+--- a/rk3566_32bit/fstab_32bit.in
++++ b/rk3566_32bit/fstab_32bit.in
+@@ -13,7 +13,6 @@ ${_block_prefix}system_ext  /system_ext ext4 ro,barrier=1 ${_flags},first_stage_
+ 
+ /devices/platform/*usb*     auto  vfat defaults voldmanaged=usb:auto
+ /devices/platform/*.sata*   auto  vfat defaults voldmanaged=sata:auto
+-/dev/block/zram0            none  swap defaults zramsize=75%,max_comp_streams=8,zram_backingdev_size=256M
+ # For sdmmc
+ /devices/platform/${_sdmmc_device}/mmc_host*        auto  auto    defaults        voldmanaged=sdcard1:auto
+ # for ext4
+diff --git a/rk3566_32bit/init.rk356x.rc b/rk3566_32bit/init.rk356x.rc
+new file mode 100644
+index 0000000..481a6d6
+--- /dev/null
++++ b/rk3566_32bit/init.rk356x.rc
+@@ -0,0 +1,39 @@
++on property:sys.boot_completed=1
++    chown system system /sys/class/devfreq/ff400000.gpu/governor
++    chown system system /sys/class/devfreq/ff400000.gpu/min_freq
++    chown system system /sys/class/devfreq/ff400000.gpu/max_freq
++    write /sys/devices/system/cpu/cpufreq/policy0/interactive/target_loads 65
++
++on boot
++    chown system system /sys/class/thermal/thermal_zone0/policy
++    chown system system /sys/class/thermal/thermal_zone1/policy
++    chown system system /sys/class/thermal/thermal_zone2/policy
++
++    write /dev/cpuset/foreground/cpus 0-3
++    write /dev/cpuset/foreground/boost/cpus 0-3
++    write /dev/cpuset/background/cpus 0-2
++    write /dev/cpuset/system-background/cpus 0-2
++    write /dev/cpuset/top-app/cpus 0-3
++
++    # reduce schedul time to improve io performance
++    write /sys/kernel/debug/sched_features NO_ENERGY_AWARE
++
++#enable ZRAM
++on property:sys.boot_completed=1
++    write /proc/sys/vm/swappiness 150
++    write /proc/sys/vm/page-cluster  0
++    write /sys/block/zram0/max_comp_streams 7
++    write /sys/block/zram0/comp_algorithm lz4
++    # Clean writeback file.
++    # exec /system/bin/dd  if=/dev/zero of=/data/per_boot/zram_swap bs=1024 count=262144
++    swapon_all /vendor/etc/fstab.enableswap
++
++on init
++    chown system system /sys/system_monitor/system_status
++    chmod 0666 /sys/system_monitor/system_status
++
++    chown system system /sys/class/devfreq/dmc/system_status
++    chmod 0666 /sys/class/devfreq/dmc/system_status
++
++on property:cts_gts.status=true
++    setprop vendor.hwc.compose_policy 2
+diff --git a/rk3566_32bit/overlay/frameworks/base/core/res/res/drawable-nodpi/default_wallpaper.jpg b/rk3566_32bit/overlay/frameworks/base/core/res/res/drawable-nodpi/default_wallpaper.jpg
+new file mode 100644
+index 0000000000000000000000000000000000000000..358186965c77830fb77947f4cc292ba618b3c1fb
+GIT binary patch
+literal 783
+zcmex=<NpH&0WUXCHwH#VMuu`AWcdG(A<DHPGmU}4*Ox(yfq{X8ft8t&ffdMN1Y$2{
+zW-tw6GXx4i*dR`zAOj1K0y2es1BDQ5kU9p&wgn6f8~gv?W^iU;Vq^p%C}3t~1_3q}
+z7G_p<Hg<Lp=HTS!<lx}qU}xvz<>KPz0RnbTK7L*vJ`fvZ2uM3f7ZCAquycS^kOuxA
+zU=ZYBaA0s?W>jKe5@ci+Wc+`GK_2K*R$xeg0s{&dnV4Bv*?>;s;sz?%DgbmoGcyy=
+zv8*gW?=sc`<r!E6S%nl09od8f6WNstMT{CJF62;l+IUbj=;8+z<D{Y{PA)NV2}vnc
+zHFXV5EfZ5Sa|=r=XBSsDcMngm;E>R;@QBE$<doF3^o-1`;*!#`@`}o;=9bpB_Kwc3
+zNt35coi=^O%vp;TFIl>5`HGdRHf`Rrb=&qGJ9iyAeB|h{<0np@x^(%<)oa&p+`RSh
+z(c>pipFMx^^3}&rpTB(l_Wj4tUm$-mGB88D1@{@6zXXB)Vgkki3p>bPj7;S~%q+;l
+zs%Xe2<QT}FSSYMy)W{*?G;!g^gPh97K_5huiY{`AshB)e{Rr|J*k{Cftcfh2!99lX
+d*DVGfV8Ub)WENzwXZZVPQI`e-1(^B&O#rP}-!cFI
+
+literal 0
+HcmV?d00001
+
+diff --git a/rk3566_32bit/overlay/frameworks/base/core/res/res/drawable-sw600dp-nodpi/default_wallpaper.jpg b/rk3566_32bit/overlay/frameworks/base/core/res/res/drawable-sw600dp-nodpi/default_wallpaper.jpg
+new file mode 100644
+index 0000000000000000000000000000000000000000..358186965c77830fb77947f4cc292ba618b3c1fb
+GIT binary patch
+literal 783
+zcmex=<NpH&0WUXCHwH#VMuu`AWcdG(A<DHPGmU}4*Ox(yfq{X8ft8t&ffdMN1Y$2{
+zW-tw6GXx4i*dR`zAOj1K0y2es1BDQ5kU9p&wgn6f8~gv?W^iU;Vq^p%C}3t~1_3q}
+z7G_p<Hg<Lp=HTS!<lx}qU}xvz<>KPz0RnbTK7L*vJ`fvZ2uM3f7ZCAquycS^kOuxA
+zU=ZYBaA0s?W>jKe5@ci+Wc+`GK_2K*R$xeg0s{&dnV4Bv*?>;s;sz?%DgbmoGcyy=
+zv8*gW?=sc`<r!E6S%nl09od8f6WNstMT{CJF62;l+IUbj=;8+z<D{Y{PA)NV2}vnc
+zHFXV5EfZ5Sa|=r=XBSsDcMngm;E>R;@QBE$<doF3^o-1`;*!#`@`}o;=9bpB_Kwc3
+zNt35coi=^O%vp;TFIl>5`HGdRHf`Rrb=&qGJ9iyAeB|h{<0np@x^(%<)oa&p+`RSh
+z(c>pipFMx^^3}&rpTB(l_Wj4tUm$-mGB88D1@{@6zXXB)Vgkki3p>bPj7;S~%q+;l
+zs%Xe2<QT}FSSYMy)W{*?G;!g^gPh97K_5huiY{`AshB)e{Rr|J*k{Cftcfh2!99lX
+d*DVGfV8Ub)WENzwXZZVPQI`e-1(^B&O#rP}-!cFI
+
+literal 0
+HcmV?d00001
+
+diff --git a/rk3566_32bit/overlay/frameworks/base/core/res/res/drawable-sw720dp-nodpi/default_wallpaper.jpg b/rk3566_32bit/overlay/frameworks/base/core/res/res/drawable-sw720dp-nodpi/default_wallpaper.jpg
+new file mode 100644
+index 0000000000000000000000000000000000000000..358186965c77830fb77947f4cc292ba618b3c1fb
+GIT binary patch
+literal 783
+zcmex=<NpH&0WUXCHwH#VMuu`AWcdG(A<DHPGmU}4*Ox(yfq{X8ft8t&ffdMN1Y$2{
+zW-tw6GXx4i*dR`zAOj1K0y2es1BDQ5kU9p&wgn6f8~gv?W^iU;Vq^p%C}3t~1_3q}
+z7G_p<Hg<Lp=HTS!<lx}qU}xvz<>KPz0RnbTK7L*vJ`fvZ2uM3f7ZCAquycS^kOuxA
+zU=ZYBaA0s?W>jKe5@ci+Wc+`GK_2K*R$xeg0s{&dnV4Bv*?>;s;sz?%DgbmoGcyy=
+zv8*gW?=sc`<r!E6S%nl09od8f6WNstMT{CJF62;l+IUbj=;8+z<D{Y{PA)NV2}vnc
+zHFXV5EfZ5Sa|=r=XBSsDcMngm;E>R;@QBE$<doF3^o-1`;*!#`@`}o;=9bpB_Kwc3
+zNt35coi=^O%vp;TFIl>5`HGdRHf`Rrb=&qGJ9iyAeB|h{<0np@x^(%<)oa&p+`RSh
+z(c>pipFMx^^3}&rpTB(l_Wj4tUm$-mGB88D1@{@6zXXB)Vgkki3p>bPj7;S~%q+;l
+zs%Xe2<QT}FSSYMy)W{*?G;!g^gPh97K_5huiY{`AshB)e{Rr|J*k{Cftcfh2!99lX
+d*DVGfV8Ub)WENzwXZZVPQI`e-1(^B&O#rP}-!cFI
+
+literal 0
+HcmV?d00001
+
+diff --git a/rk3566_32bit/overlay/frameworks/base/core/res/res/values/config.xml b/rk3566_32bit/overlay/frameworks/base/core/res/res/values/config.xml
+new file mode 100755
+index 0000000..48a9620
+--- /dev/null
++++ b/rk3566_32bit/overlay/frameworks/base/core/res/res/values/config.xml
+@@ -0,0 +1,170 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++/*
++** Copyright 2009, The Android Open Source Project
++**
++** Licensed under the Apache License, Version 2.0 (the "License");
++** you may not use this file except in compliance with the License.
++** You may obtain a copy of the License at
++**
++**     http://www.apache.org/licenses/LICENSE-2.0
++**
++** Unless required by applicable law or agreed to in writing, software
++** distributed under the License is distributed on an "AS IS" BASIS,
++** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++** See the License for the specific language governing permissions and
++** limitations under the License.
++*/
++-->
++
++<resources>
++
++
++    <!-- This string array should be overridden by the device to present a list of network
++         attributes.  This is used by the connectivity manager to decide which networks can coexist
++         based on the hardware -->
++    <!-- An Array of "[Connection name],[ConnectivityManager connection type],
++         [associated radio-type],[priority],[restoral-timer(ms)],[dependencyMet]  -->
++    <!-- the 5th element "resore-time" indicates the number of milliseconds to delay
++         before automatically restore the default connection.  Set -1 if the connection
++         does not require auto-restore. -->
++    <!-- the 6th element indicates boot-time dependency-met value. -->
++    <string-array translatable="false" name="networkAttributes">
++        <item>"wifi,1,1,2,-1,true"</item>
++        <item>"bluetooth,7,7,0,-1,true"</item>
++        <item>"ethernet,9,9,9,-1,true"</item>
++    </string-array>
++    <!-- Flag indicating whether we should enable the automatic brightness in Settings.
++         config_hardware_automatic_brightness_available is not set, so we will use software implementation -->
++    <bool name="config_automatic_brightness_available">true</bool>
++
++    <!-- Array of light sensor LUX values to define our levels for auto backlight brightness support.
++         The N entries of this array define N + 1 control points as follows:
++         (1-based arrays)
++
++         Point 1:            (0, value[1]):             lux <= 0
++         Point 2:     (level[1], value[2]):  0        < lux <= level[1]
++         Point 3:     (level[2], value[3]):  level[2] < lux <= level[3]
++         ...
++         Point N+1: (level[N], value[N+1]):  level[N] < lux
++
++         The control points must be strictly increasing.  Each control point
++         corresponds to an entry in the brightness backlight values arrays.
++         For example, if LUX == level[1] (first element of the levels array)
++         then the brightness will be determined by value[2] (second element
++         of the brightness values array).
++
++         Spline interpolation is used to determine the auto-brightness
++         backlight values for LUX levels between these control points.
++
++         Must be overridden in platform specific overlays -->
++    <integer-array name="config_autoBrightnessLevels">
++        <item>11</item>
++        <item>41</item>
++        <item>91</item>
++        <item>161</item>
++        <item>226</item>
++        <item>321</item>
++        <item>641</item>
++        <item>1281</item>
++        <item>2601</item>
++    </integer-array>
++
++    <!-- Array of output values for LCD backlight corresponding to the LUX values
++         in the config_autoBrightnessLevels array.  This array should have size one greater
++         than the size of the config_autoBrightnessLevels array.
++         The brightness values must be between 0 and 255 and be non-decreasing.
++         This must be overridden in platform specific overlays -->
++    <integer-array name="config_autoBrightnessLcdBacklightValues">
++        <item>10</item>
++        <item>48</item>
++        <item>48</item>
++        <item>77</item>
++        <item>106</item>
++        <item>133</item>
++        <item>164</item>
++        <item>194</item>
++        <item>225</item>
++        <item>255</item>
++    </integer-array>
++
++    <!-- Array of output values for button backlight corresponding to the LUX values
++         in the config_autoBrightnessLevels array.  This array should have size one greater
++         than the size of the config_autoBrightnessLevels array.
++         The brightness values must be between 0 and 255 and be non-decreasing.
++         This must be overridden in platform specific overlays -->
++    <integer-array name="config_autoBrightnessButtonBacklightValues">
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++    </integer-array>
++
++    <!-- Array of output values for keyboard backlight corresponding to the LUX values
++         in the config_autoBrightnessLevels array.  This array should have size one greater
++         than the size of the config_autoBrightnessLevels array.
++         The brightness values must be between 0 and 255 and be non-decreasing.
++         This must be overridden in platform specific overlays -->
++    <integer-array name="config_autoBrightnessKeyboardBacklightValues">
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++        <item>0</item>
++    </integer-array>
++
++    <!-- Screen brightness used to dim the screen when the user activity
++         timeout expires.  May be less than the minimum allowed brightness setting
++         that can be set by the user. -->
++    <integer name="config_screenBrightnessDim">2</integer>
++
++    <!-- Set this to true to enable the platform's auto-power-save modes like doze and
++         app standby.  These are not enabled by default because they require a standard
++         cloud-to-device messaging service for apps to interact correctly with the modes
++         (such as to be able to deliver an instant message to the device even when it is
++         dozing).  This should be enabled if you have such services and expect apps to
++         correctly use them when installed on your device.  Otherwise, keep this disabled
++         so that applications can still use their own mechanisms. -->
++    <bool name="config_enableAutoPowerModes">true</bool>
++
++    <!-- Boolean indicating whether or not wifi firmware debugging is enabled -->
++    <bool translatable="false" name="config_wifi_enable_wifi_firmware_debugging">false</bool>
++    <!-- Integer size limit, in KB, for a single WifiLogger ringbuffer, in default logging mode -->
++    <integer translatable="false" name="config_wifi_logger_ring_buffer_verbose_size_limit_kb">64</integer>
++    <string translatable="false" name="config_ntpServer">asia.pool.ntp.org</string>
++
++    <!--  Maximum number of supported users -->
++    <integer name="config_multiuserMaximumUsers">1</integer>
++
++    <item name="config_highResTaskSnapshotScale" format="float" type="dimen">0.8</item>
++    <item name="config_lowResTaskSnapshotScale" format="float"  type="dimen">0.3</item>
++    <bool name="config_use16BitTaskSnapshotPixelFormat">true</bool>
++    <!-- Launcher Go customization requires AppWidgetService, but otherwise
++         home screen widgets are not supported -->
++    <bool name="config_enableAppWidgetService">false</bool>
++    <!-- Turn off Wallpaper service -->
++    <bool name="config_enableWallpaperService">false</bool>
++    <!-- Enable Zram writeback feature to allow unused pages in zram be written to flash. -->
++    <bool name="config_zramWriteback">true</bool>
++
++    <!-- Device configuration setting the minfree tunable in the lowmemorykiller in the kernel.
++         A high value will cause the lowmemorykiller to fire earlier, keeping more memory
++         in the file cache and preventing I/O thrashing, but allowing fewer processes to
++         stay in memory.  A low value will keep more processes in memory but may cause
++         thrashing if set too low.  Overrides the default value chosen by ActivityManager
++         based on screen size and total memory for the largest lowmemorykiller bucket, and
++         scaled proportionally to the smaller buckets.  -1 keeps the default. -->
++    <integer name="config_lowMemoryKillerMinFreeKbytesAbsolute">81920</integer>
++</resources>
++
+diff --git a/rk3566_32bit/overlay/frameworks/base/packages/SettingsProvider/res/values/defaults.xml b/rk3566_32bit/overlay/frameworks/base/packages/SettingsProvider/res/values/defaults.xml
+index a79efa0..4a3ad61 100755
+--- a/rk3566_32bit/overlay/frameworks/base/packages/SettingsProvider/res/values/defaults.xml
++++ b/rk3566_32bit/overlay/frameworks/base/packages/SettingsProvider/res/values/defaults.xml
+@@ -17,12 +17,25 @@
+  */
+ -->
+ <resources>
+-    <!-- 0 == Always sleep
+-	 1 == Do not sleep when plugged in
+-	 2 == Never sleep
+-	When the screen is off, it will enter the sleep policy.
+-	You can configure persist.wifi.sleep.delay.ms to delay closing wifi.
+-	The default is 15 minutes, 0 means that the wifi is turned off
+-	immediately after the screen is off. -->
++    <!--
++        0 == Always sleep
++        1 == Do not sleep when plugged in
++        2 == Never sleep
++        When the screen is off, it will enter the sleep policy.
++        You can configure persist.wifi.sleep.delay.ms to delay closing wifi.
++        The default is 15 minutes, 0 means that the wifi is turned off
++        immediately after the screen is off. -->
+     <integer name="def_wifi_sleep_policy">0</integer>
++    <integer name="def_screen_off_timeout">60000</integer>
++    <!-- Initial value for the Settings.Secure.IMMERSIVE_MODE_CONFIRMATIONS setting,
++         which is a comma separated list of packages that no longer need confirmation
++         for immersive mode.
++         Override to disable immersive mode confirmation for certain packages. -->
++    <string name="def_immersive_mode_confirmations" translatable="false">confirmed</string>
++    <bool name="def_bluetooth_on">false</bool>
++    <bool name="def_accelerometer_rotation">false</bool>
++
++    <!-- Decrease animation duration. -->
++    <fraction name="def_window_animation_scale">50%</fraction>
++    <fraction name="def_window_transition_scale">50%</fraction>
+ </resources>
+diff --git a/rk3566_32bit/overlay/frameworks/base/packages/SystemUI/res/values/config.xml b/rk3566_32bit/overlay/frameworks/base/packages/SystemUI/res/values/config.xml
+new file mode 100755
+index 0000000..326ee05
+--- /dev/null
++++ b/rk3566_32bit/overlay/frameworks/base/packages/SystemUI/res/values/config.xml
+@@ -0,0 +1,38 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++/*
++** Copyright 2009, The Android Open Source Project
++**
++** Licensed under the Apache License, Version 2.0 (the "License");
++** you may not use this file except in compliance with the License.
++** You may obtain a copy of the License at
++**
++**     http://www.apache.org/licenses/LICENSE-2.0
++**
++** Unless required by applicable law or agreed to in writing, software
++** distributed under the License is distributed on an "AS IS" BASIS,
++** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++** See the License for the specific language governing permissions and
++** limitations under the License.
++*/
++-->
++
++<!-- These resources are around just to allow their values to be customized
++     for different hardware and product builds. -->
++<resources>
++    <!-- Whether to enable dimming navigation buttons when wallpaper is not visible, should be
++         enabled for OLED devices to reduce/prevent burn in on the navigation bar (because of the
++         black background and static button placements) and disabled for all other devices to
++         prevent wasting cpu cycles on the dimming animation -->
++    <bool name="config_navigation_bar_enable_auto_dim_no_visible_wallpaper">false</bool>
++    <!-- The default tiles to display in QuickSettings -->
++    <string name="quick_settings_tiles_default" translatable="false">
++        wifi,bt,airplane
++    </string>
++    <!-- The minimum number of tiles to display in QuickSettings -->
++    <integer name="quick_settings_min_num_tiles">3</integer>
++    <!-- If true, enable the advance anti-falsing classifier on the lockscreen. On
++         some devices it does not work well, particularly with noisy touchscreens. Note
++         that disabling it may increase the rate of unintentional unlocks. -->
++    <bool name="config_lockscreenAntiFalsingClassifierEnabled">false</bool>
++</resources>
+diff --git a/rk3566_32bit/rk3566_32bit.mk b/rk3566_32bit/rk3566_32bit.mk
+index a25f585..f857f18 100644
+--- a/rk3566_32bit/rk3566_32bit.mk
++++ b/rk3566_32bit/rk3566_32bit.mk
+@@ -19,13 +19,34 @@ PRODUCT_SHIPPING_API_LEVEL := 30
+ PRODUCT_DTBO_TEMPLATE := $(LOCAL_PATH)/dt-overlay.in
+ PRODUCT_SDMMC_DEVICE := fe2b0000.dwmmc
+ 
++# Override properties MUST be set before including other mk.
++# ro.lmk.use_minfree_levels=true
++PRODUCT_PROPERTY_OVERRIDES += \
++    persist.proc_compact.enable=true \
++    persist.proc_compact.app_enable=false \
++    persist.proc_compact.first_pc_delay_mins=1 \
++    persist.proc_compact.periodic_pc_delay_mins=3 \
++    dalvik.vm.usejit=false \
++    ro.config.per_app_memcg=false \
++    ro.lmk.upgrade_pressure=30 \
++    ro.lmk.low=1001 \
++    ro.lmk.medium=700 \
++    ro.lmk.critical=201
++
++BOARD_SELINUX_ENFORCING := false
++
+ include device/rockchip/common/build/rockchip/DynamicPartitions.mk
+ include device/rockchip/rk356x/rk3566_32bit/BoardConfig.mk
+ include device/rockchip/common/BoardConfig.mk
++
++PRODUCT_COPY_FILES += \
++    $(LOCAL_PATH)/init.rk356x.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.rk356x.rc \
++    $(LOCAL_PATH)/fstab.enableswap:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.enableswap
++
+ $(call inherit-product, device/rockchip/rk356x/device.mk)
+ $(call inherit-product, device/rockchip/common/device.mk)
+ 
+-DEVICE_PACKAGE_OVERLAYS += $(LOCAL_PATH)/overlay
++DEVICE_PACKAGE_OVERLAYS := device/rockchip/common/overlay $(LOCAL_PATH)/overlay
+ 
+ PRODUCT_CHARACTERISTICS := tablet
+ 
+-- 
+2.17.1
+

@@ -1,0 +1,43 @@
+diff --git a/config/hiddenapi-greylist.txt b/config/hiddenapi-greylist.txt
+index a3543dc7f4ee..060085894afb 100644
+--- a/config/hiddenapi-greylist.txt
++++ b/config/hiddenapi-greylist.txt
+@@ -248,9 +248,6 @@ Landroid/service/persistentdata/IPersistentDataBlockService$Stub;->asInterface(L
+ Landroid/service/vr/IVrManager$Stub;->asInterface(Landroid/os/IBinder;)Landroid/service/vr/IVrManager;
+ Landroid/service/wallpaper/IWallpaperConnection$Stub;-><init>()V
+ Landroid/service/wallpaper/IWallpaperService$Stub;->asInterface(Landroid/os/IBinder;)Landroid/service/wallpaper/IWallpaperService;
+-Landroid/telephony/mbms/IMbmsStreamingSessionCallback$Stub;-><init>()V
+-Landroid/telephony/mbms/IStreamingServiceCallback$Stub;-><init>()V
+-Landroid/telephony/mbms/vendor/IMbmsStreamingService$Stub;->asInterface(Landroid/os/IBinder;)Landroid/telephony/mbms/vendor/IMbmsStreamingService;
+ Landroid/view/accessibility/IAccessibilityManager$Stub$Proxy;-><init>(Landroid/os/IBinder;)V
+ Landroid/view/accessibility/IAccessibilityManager$Stub;->asInterface(Landroid/os/IBinder;)Landroid/view/accessibility/IAccessibilityManager;
+ Landroid/view/autofill/IAutoFillManager$Stub$Proxy;-><init>(Landroid/os/IBinder;)V
+@@ -328,28 +325,6 @@ Lcom/android/internal/policy/IKeyguardStateCallback$Stub;->asInterface(Landroid/
+ Lcom/android/internal/statusbar/IStatusBar$Stub;->asInterface(Landroid/os/IBinder;)Lcom/android/internal/statusbar/IStatusBar;
+ Lcom/android/internal/statusbar/IStatusBarService$Stub;-><init>()V
+ Lcom/android/internal/statusbar/IStatusBarService$Stub;->asInterface(Landroid/os/IBinder;)Lcom/android/internal/statusbar/IStatusBarService;
+-Lcom/android/internal/telecom/ITelecomService$Stub;->asInterface(Landroid/os/IBinder;)Lcom/android/internal/telecom/ITelecomService;
+-Lcom/android/internal/telephony/IIccPhoneBook$Stub$Proxy;->mRemote:Landroid/os/IBinder;
+-Lcom/android/internal/telephony/IIccPhoneBook$Stub;->asInterface(Landroid/os/IBinder;)Lcom/android/internal/telephony/IIccPhoneBook;
+-Lcom/android/internal/telephony/IMms$Stub;->asInterface(Landroid/os/IBinder;)Lcom/android/internal/telephony/IMms;
+-Lcom/android/internal/telephony/IPhoneStateListener$Stub;->asInterface(Landroid/os/IBinder;)Lcom/android/internal/telephony/IPhoneStateListener;
+-Lcom/android/internal/telephony/IPhoneSubInfo$Stub$Proxy;-><init>(Landroid/os/IBinder;)V
+-Lcom/android/internal/telephony/IPhoneSubInfo$Stub;->asInterface(Landroid/os/IBinder;)Lcom/android/internal/telephony/IPhoneSubInfo;
+-Lcom/android/internal/telephony/IPhoneSubInfo$Stub;->TRANSACTION_getDeviceId:I
+-Lcom/android/internal/telephony/ISms$Stub;-><init>()V
+-Lcom/android/internal/telephony/ISms$Stub;->asInterface(Landroid/os/IBinder;)Lcom/android/internal/telephony/ISms;
+-Lcom/android/internal/telephony/ISub$Stub$Proxy;-><init>(Landroid/os/IBinder;)V
+-Lcom/android/internal/telephony/ISub$Stub;->asInterface(Landroid/os/IBinder;)Lcom/android/internal/telephony/ISub;
+-Lcom/android/internal/telephony/ITelephony$Stub$Proxy;-><init>(Landroid/os/IBinder;)V
+-Lcom/android/internal/telephony/ITelephony$Stub$Proxy;->mRemote:Landroid/os/IBinder;
+-Lcom/android/internal/telephony/ITelephony$Stub;->asInterface(Landroid/os/IBinder;)Lcom/android/internal/telephony/ITelephony;
+-Lcom/android/internal/telephony/ITelephony$Stub;->DESCRIPTOR:Ljava/lang/String;
+-Lcom/android/internal/telephony/ITelephony$Stub;->TRANSACTION_call:I
+-Lcom/android/internal/telephony/ITelephony$Stub;->TRANSACTION_dial:I
+-Lcom/android/internal/telephony/ITelephony$Stub;->TRANSACTION_getDeviceId:I
+-Lcom/android/internal/telephony/ITelephonyRegistry$Stub$Proxy;-><init>(Landroid/os/IBinder;)V
+-Lcom/android/internal/telephony/ITelephonyRegistry$Stub;->asInterface(Landroid/os/IBinder;)Lcom/android/internal/telephony/ITelephonyRegistry;
+-Lcom/android/internal/telephony/IWapPushManager$Stub;->asInterface(Landroid/os/IBinder;)Lcom/android/internal/telephony/IWapPushManager;
+ Lcom/android/internal/textservice/ITextServicesManager$Stub$Proxy;-><init>(Landroid/os/IBinder;)V
+ Lcom/android/internal/view/IInputMethodManager$Stub$Proxy;-><init>(Landroid/os/IBinder;)V
+ Lcom/android/internal/view/IInputMethodManager$Stub;->asInterface(Landroid/os/IBinder;)Lcom/android/internal/view/IInputMethodManager;

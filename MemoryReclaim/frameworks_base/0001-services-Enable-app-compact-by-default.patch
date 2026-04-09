@@ -1,0 +1,317 @@
+From 4d9904f3626a409b267a67248f0aa070ff7eb565 Mon Sep 17 00:00:00 2001
+From: Bian Jin chen <kenjc.bian@rock-chips.com>
+Date: Wed, 16 Jun 2021 19:20:41 +0800
+Subject: [PATCH] services: Enable app compact by default.
+
+Process compact need kernel process_reclaim support:
+CONFIG_PROCESS_RECLAIM=y
+
+Add rockchip native process support, sched reclaim job to reclaim native
+process. Use `setprop ctl.start rockchip.reclaimd` to test.
+
+Use `logcat -s RockchipProcessCompactor` to check detail.
+Use `logcat -s RockchipReclaimD` to check native detail.
+
+Signed-off-by: Bian Jin chen <kenjc.bian@rock-chips.com>
+Change-Id: I190d9ba016afbc64bba9e1304fbd2dae916f85fd
+---
+ core/res/AndroidManifest.xml                  |   5 +
+ .../server/RockchipProcessCompactor.java      | 240 ++++++++++++++++++
+ .../android/server/StorageManagerService.java |   4 +
+ .../android/server/am/CachedAppOptimizer.java |   2 +-
+ 4 files changed, 250 insertions(+), 1 deletion(-)
+ create mode 100644 services/core/java/com/android/server/RockchipProcessCompactor.java
+
+diff --git a/core/res/AndroidManifest.xml b/core/res/AndroidManifest.xml
+index 09923796e035..a9667f26905b 100644
+--- a/core/res/AndroidManifest.xml
++++ b/core/res/AndroidManifest.xml
+@@ -5414,6 +5414,11 @@
+                  android:permission="android.permission.BIND_JOB_SERVICE" >
+         </service>
+ 
++        <service android:name="com.android.server.RockchipProcessCompactor"
++                 android:exported="false"
++                 android:permission="android.permission.BIND_JOB_SERVICE" >
++        </service>
++
+         <service android:name="com.android.server.backup.FullBackupJob"
+                  android:exported="true"
+                  android:permission="android.permission.BIND_JOB_SERVICE" >
+diff --git a/services/core/java/com/android/server/RockchipProcessCompactor.java b/services/core/java/com/android/server/RockchipProcessCompactor.java
+new file mode 100644
+index 000000000000..c9937b872000
+--- /dev/null
++++ b/services/core/java/com/android/server/RockchipProcessCompactor.java
+@@ -0,0 +1,240 @@
++/*
++ * Copyright (C) 2019 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.server;
++
++import android.app.ActivityManager;
++import android.app.IActivityManager;
++import android.app.job.JobInfo;
++import android.app.job.JobParameters;
++import android.app.job.JobScheduler;
++import android.app.job.JobService;
++import android.content.ComponentName;
++import android.content.Context;
++import android.content.pm.PackageManager;
++import android.os.FileUtils;
++import android.os.SystemProperties;
++import android.os.Process;
++
++import android.util.Slog;
++
++import java.io.File;
++import java.io.FileOutputStream;
++import java.io.IOException;
++import java.util.concurrent.TimeUnit;
++import java.util.Iterator;
++import java.util.List;
++
++/**
++ * Schedules jobs for triggering process reclaim.
++ */
++public final class RockchipProcessCompactor extends JobService {
++    private static final String TAG = "RockchipProcessCompactor";
++    private static final boolean DEBUG = true;
++    //WARNING: This feature may conflict with AppCompact, please check it carefully!
++    private static final boolean USE_PROCESS_COMPACTOR = false;
++
++    private static final ComponentName sRockchipProcessCompactor =
++            new ComponentName("android", RockchipProcessCompactor.class.getName());
++
++    private static final int MARK_IDLE_JOB_ID = 813;
++    private static final int PROC_COMPACT_IDLE_JOB_ID = 814;
++    private static final int DEFAULT_DELAY_TIME_MINUTES = 5;
++
++    private static final String NATIVE_PROC_COMPACT_SERVICE_NAME = "rockchip.reclaimd";
++    private static final String MARK_IDLE_DELAY_PROP = "persist.proc_compact.mark_idle_delay_mins";
++    private static final String FIRST_WB_DELAY_PROP = "persist.proc_compact.first_pc_delay_mins";
++    private static final String PERIODIC_PROC_COMPACT_DELAY_PROP = "persist.proc_compact.periodic_pc_delay_mins";
++
++    private static final String MEM_LEVEL_PROP = "persist.proc_compact.memory_required";
++    private static final String USE_PROC_COMPACT_PROP = "persist.proc_compact.enable";
++    private static final String USE_PROC_APP_COMPACT_PROP = "persist.proc_compact.app_enable";
++
++    private static final String FORCE_PROC_COMPACT_PROP = "persist.proc_compact.force_reclaim";
++    private static String[] mSpecialPackages = {"com.android","com.google"};
++
++    // Return memory level for required.
++    // Currently, return 500M(60%) for 1GB devices.
++    // KB
++    private long getMemLevelRequired() {
++        long memoryLevel = 1024L * SystemProperties.getInt(MEM_LEVEL_PROP, 500);
++        Slog.e(TAG, "Total memory: " + Process.getTotalMemory());
++        return memoryLevel;
++    }
++
++    // Return current memory status, free, cached...
++    // KB
++    private long getCurrentMemAvailable() {
++        long freeMem = Process.getFreeMemory();
++        long homeAppMem = 0L;
++        final IActivityManager am = ActivityManager.getService();
++        try {
++            ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
++            am.getMemoryInfo(info);
++            homeAppMem = info.threshold;
++        } catch (Exception e) {}
++
++        Slog.e(TAG, "Free memory: " + freeMem + ", Home App memory: " + homeAppMem);
++        return freeMem + homeAppMem;
++    }
++
++    // Current memory is enough, no need to reclaim process memory.
++    private void markMemIsEnough() {
++        if (DEBUG) Slog.d(TAG, "markMemIsEnough, IDLE job....");
++    }
++
++    private void doReclaimProcess(int pid, String action) {
++        if (DEBUG) Slog.d(TAG, "Trigger [" + action + "] reclaim for pid: " + pid);
++        try (FileOutputStream fos = new FileOutputStream("/proc/" + pid + "/reclaim")) {
++            fos.write(action.getBytes());
++        } catch (Exception e) {
++            Slog.e(TAG, "Error writing reclaim node!!!!!" + e.toString());
++        }
++    }
++
++    private boolean isProtectPackage(String packageName) {
++        for (String name : mSpecialPackages) {
++            if (packageName.contains(name)) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    private boolean shouldReclaimProcess(ActivityManager.RunningAppProcessInfo info) {
++        if (DEBUG) Slog.d(TAG, "pid: " + info.pid + "(" + info.processName + ")");
++        if (info.isFocused) {
++            Slog.w(TAG, "Current app is focused, should not reclaim.");
++            return false;
++        }
++        return true;
++    }
++
++    private void doNativeProcessReclaim() {
++        Slog.i(TAG, "Do native process reclaim...check logcat TAG: RockchipReclaimD");
++        SystemProperties.set("ctl.start", NATIVE_PROC_COMPACT_SERVICE_NAME);
++    }
++
++    private void doProcessReclaimUntilReachMemLevel() {
++        // Start Native compact.
++        doNativeProcessReclaim();
++
++        if (!isAppCompactorEnable()) return;
++
++        // Start App compact
++        long oldMem = getCurrentMemAvailable();
++        ActivityManager am = (ActivityManager)this.getSystemService(Context.ACTIVITY_SERVICE);
++        PackageManager pm = this.getPackageManager();
++        List l = am.getRunningAppProcesses();
++        Iterator i = l.iterator();
++        while (i.hasNext()) {
++            ActivityManager.RunningAppProcessInfo info = (ActivityManager.RunningAppProcessInfo)(i.next());
++            if (DEBUG) Slog.d(TAG, "List current process: " + info.processName + "(" + info.pid + ")");
++            if (shouldReclaimProcess(info)) {
++                doReclaimProcess(info.pid, "all");
++            }
++            if (!isAppCompactorEnable() && getCurrentMemAvailable() <= getMemLevelRequired()) {
++                Slog.e(TAG, "doProcessReclaimUntilReachMemLevel is finished...");
++                break;
++            }
++            try {
++                Thread.sleep(1000);
++            } catch (Exception e) {
++            }
++        }
++        markMemIsEnough();
++        if (oldMem != -1) {
++            Slog.i(TAG, "Freed memory is about " + (getCurrentMemAvailable() - oldMem)/1024 + "KB.");
++        }
++    }
++
++    public static boolean isProcessCompactorEnabled() {
++        boolean enabled = SystemProperties.getBoolean(USE_PROC_COMPACT_PROP, USE_PROCESS_COMPACTOR);
++        return enabled;
++    }
++
++    public static boolean isAppCompactorEnable() {
++        boolean enabled = SystemProperties.getBoolean(USE_PROC_APP_COMPACT_PROP, USE_PROCESS_COMPACTOR);
++        return isProcessCompactorEnabled() && enabled;
++    }
++
++    private static void schedNextProcessCompact(Context context) {
++        int nextProcReclaimDelay = SystemProperties.getInt(PERIODIC_PROC_COMPACT_DELAY_PROP, DEFAULT_DELAY_TIME_MINUTES);
++        boolean forceProcReclaim = SystemProperties.getBoolean(FORCE_PROC_COMPACT_PROP, true);
++        JobScheduler js = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
++
++        js.schedule(new JobInfo.Builder(PROC_COMPACT_IDLE_JOB_ID, sRockchipProcessCompactor)
++                        .setMinimumLatency(TimeUnit.MINUTES.toMillis(nextProcReclaimDelay))
++                        .setRequiresDeviceIdle(!forceProcReclaim)
++                        .build());
++    }
++
++    @Override
++    public boolean onStartJob(JobParameters params) {
++        if (DEBUG) Slog.d(TAG, "StartJob: " + TAG + ", id: " + params.getJobId());
++        if (!isProcessCompactorEnabled()) {
++            jobFinished(params, false);
++            return false;
++        }
++
++        if (params.getJobId() == MARK_IDLE_JOB_ID) {
++            markMemIsEnough();
++            jobFinished(params, false);
++            return false;
++        } else {
++            new Thread("RockchipProcessCompactor_Reclaim_Process") {
++                @Override
++                public void run() {
++                    doProcessReclaimUntilReachMemLevel();
++                    schedNextProcessCompact(RockchipProcessCompactor.this);
++                    jobFinished(params, false);
++                }
++            }.start();
++        }
++        return true;
++    }
++
++    @Override
++    public boolean onStopJob(JobParameters params) {
++        // The thread that triggers the reclaim is non-interruptible
++        return false;
++    }
++
++    /**
++     * Schedule the process compact job to trigger a process when idle
++     * This func is triggered by OnSystemReady()
++     */
++    public static void scheduleRockchipProcessCompactor(Context context) {
++        Slog.i(TAG, "OnSystemReady-->scheduleRockchipProcessCompactor");
++        int markIdleDelay = SystemProperties.getInt(MARK_IDLE_DELAY_PROP, DEFAULT_DELAY_TIME_MINUTES);
++        int firstProcCompactDelay = SystemProperties.getInt(FIRST_WB_DELAY_PROP, 3);
++        boolean forceProcReclaim = SystemProperties.getBoolean(FORCE_PROC_COMPACT_PROP, true);
++
++        JobScheduler js = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
++
++        // Schedule a one time job to mark pages as idle.
++        js.schedule(new JobInfo.Builder(MARK_IDLE_JOB_ID, sRockchipProcessCompactor)
++                        .setMinimumLatency(TimeUnit.MINUTES.toMillis(markIdleDelay))
++                        .setOverrideDeadline(TimeUnit.MINUTES.toMillis(markIdleDelay))
++                        .build());
++
++        // Schedule a one time job to compact process.
++        js.schedule(new JobInfo.Builder(PROC_COMPACT_IDLE_JOB_ID, sRockchipProcessCompactor)
++                        .setMinimumLatency(TimeUnit.MINUTES.toMillis(firstProcCompactDelay))
++                        .setRequiresDeviceIdle(!forceProcReclaim)
++                        .build());
++    }
++}
+diff --git a/services/core/java/com/android/server/StorageManagerService.java b/services/core/java/com/android/server/StorageManagerService.java
+index 0a3612e9b379..ede1fc141210 100644
+--- a/services/core/java/com/android/server/StorageManagerService.java
++++ b/services/core/java/com/android/server/StorageManagerService.java
+@@ -929,6 +929,10 @@ class StorageManagerService extends IStorageManager.Stub
+                     refreshFuseSettings();
+                 });
+         refreshIsolatedStorageSettings();
++
++        if (RockchipProcessCompactor.isProcessCompactorEnabled()) {
++            RockchipProcessCompactor.scheduleRockchipProcessCompactor(mContext);
++        }
+     }
+ 
+     /**
+diff --git a/services/core/java/com/android/server/am/CachedAppOptimizer.java b/services/core/java/com/android/server/am/CachedAppOptimizer.java
+index 36d4a38c1624..bd20b44da38e 100644
+--- a/services/core/java/com/android/server/am/CachedAppOptimizer.java
++++ b/services/core/java/com/android/server/am/CachedAppOptimizer.java
+@@ -90,7 +90,7 @@ public final class CachedAppOptimizer {
+     private static final String COMPACT_ACTION_FULL = "all";
+ 
+     // Defaults for phenotype flags.
+-    @VisibleForTesting static final Boolean DEFAULT_USE_COMPACTION = false;
++    @VisibleForTesting static final Boolean DEFAULT_USE_COMPACTION = true;
+     @VisibleForTesting static final Boolean DEFAULT_USE_FREEZER = false;
+     @VisibleForTesting static final int DEFAULT_COMPACT_ACTION_1 = COMPACT_ACTION_FILE_FLAG;
+     @VisibleForTesting static final int DEFAULT_COMPACT_ACTION_2 = COMPACT_ACTION_FULL_FLAG;
+-- 
+2.17.1
+

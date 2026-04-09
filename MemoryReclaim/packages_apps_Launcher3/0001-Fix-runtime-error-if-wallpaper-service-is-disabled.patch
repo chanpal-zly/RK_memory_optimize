@@ -1,0 +1,70 @@
+From 179c4335eb5aea12da54911c2d139e8de4d34325 Mon Sep 17 00:00:00 2001
+From: Bian Jin chen <kenjc.bian@rock-chips.com>
+Date: Tue, 22 Jun 2021 14:08:45 +0800
+Subject: [PATCH] Fix runtime error if wallpaper service is disabled.
+
+Signed-off-by: Bian Jin chen <kenjc.bian@rock-chips.com>
+Change-Id: I4c8462af69cb324e0644ba5e32eed690cd72f631
+---
+ .../android/launcher3/statehandlers/DepthController.java    | 6 +++---
+ src/com/android/launcher3/Workspace.java                    | 1 +
+ src/com/android/launcher3/qsb/QsbContainerView.java         | 1 +
+ 3 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/quickstep/src/com/android/launcher3/statehandlers/DepthController.java b/quickstep/src/com/android/launcher3/statehandlers/DepthController.java
+index fe8f0c653..4d632e887 100644
+--- a/quickstep/src/com/android/launcher3/statehandlers/DepthController.java
++++ b/quickstep/src/com/android/launcher3/statehandlers/DepthController.java
+@@ -130,7 +130,7 @@ public class DepthController implements StateHandler<LauncherState>,
+                     // To handle the case where window token is invalid during last setDepth call.
+                     IBinder windowToken = mLauncher.getRootView().getWindowToken();
+                     if (windowToken != null) {
+-                        mWallpaperManager.setWallpaperZoomOut(windowToken, mDepth);
++                        //mWallpaperManager.setWallpaperZoomOut(windowToken, mDepth);
+                     }
+                 }
+ 
+@@ -215,14 +215,14 @@ public class DepthController implements StateHandler<LauncherState>,
+         }
+ 
+         boolean supportsBlur = BlurUtils.supportsBlursOnWindows();
+-        if (supportsBlur && (mSurface == null || !mSurface.isValid())) {
++        if (!supportsBlur && (mSurface == null || !mSurface.isValid())) {
+             return;
+         }
+         mDepth = depthF;
+         ensureDependencies();
+         IBinder windowToken = mLauncher.getRootView().getWindowToken();
+         if (windowToken != null) {
+-            mWallpaperManager.setWallpaperZoomOut(windowToken, mDepth);
++            //mWallpaperManager.setWallpaperZoomOut(windowToken, mDepth);
+         }
+ 
+         if (supportsBlur) {
+diff --git a/src/com/android/launcher3/Workspace.java b/src/com/android/launcher3/Workspace.java
+index a6283ff25..191615289 100644
+--- a/src/com/android/launcher3/Workspace.java
++++ b/src/com/android/launcher3/Workspace.java
+@@ -1144,6 +1144,7 @@ public class Workspace extends PagedView<WorkspacePageIndicator>
+         Executors.THREAD_POOL_EXECUTOR.execute(new Runnable() {
+             @Override
+             public void run() {
++                if (!mWallpaperManager.isWallpaperSupported()) return;
+                 final Point size = LauncherAppState.getIDP(getContext()).defaultWallpaperSize;
+                 if (size.x != mWallpaperManager.getDesiredMinimumWidth()
+                         || size.y != mWallpaperManager.getDesiredMinimumHeight()) {
+diff --git a/src/com/android/launcher3/qsb/QsbContainerView.java b/src/com/android/launcher3/qsb/QsbContainerView.java
+index 289e0d84c..a503ebcab 100644
+--- a/src/com/android/launcher3/qsb/QsbContainerView.java
++++ b/src/com/android/launcher3/qsb/QsbContainerView.java
+@@ -94,6 +94,7 @@ public class QsbContainerView extends FrameLayout {
+ 
+         AppWidgetProviderInfo defaultWidgetForSearchPackage = null;
+         AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
++        if (appWidgetManager == null) return null;
+         for (AppWidgetProviderInfo info :
+                 appWidgetManager.getInstalledProvidersForPackage(providerPkg, null)) {
+             if (info.provider.getPackageName().equals(providerPkg) && info.configure == null) {
+-- 
+2.17.1
+

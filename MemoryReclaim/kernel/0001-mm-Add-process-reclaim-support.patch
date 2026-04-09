@@ -1,0 +1,457 @@
+From 14fd86f8bb52775a6de9225a16d171e36c7b0497 Mon Sep 17 00:00:00 2001
+From: Bian Jin chen <kenjc.bian@rock-chips.com>
+Date: Tue, 22 Jun 2021 11:49:43 +0800
+Subject: [PATCH 1/2] mm: Add process reclaim support.
+
+This feature support reclaim file/anon pages via pid,
+set CONFIG_PROCESS_RECLAIM=y to enable this feature.
+
+Signed-off-by: Bian Jin chen <kenjc.bian@rock-chips.com>
+Change-Id: Ic63bec3e3ae33b6f09cdefcacaa1e243f2cb2598
+---
+ fs/proc/base.c       |   3 +
+ fs/proc/internal.h   |   4 +
+ fs/proc/task_mmu.c   | 258 +++++++++++++++++++++++++++++++++++++++++++
+ include/linux/mm.h   |  15 +++
+ include/linux/rmap.h |   5 +
+ mm/Kconfig           |  16 +++
+ mm/vmscan.c          |  43 ++++++++
+ 7 files changed, 344 insertions(+)
+
+diff --git a/fs/proc/base.c b/fs/proc/base.c
+index 7d6106dec42b..dd8d3ccdc7d9 100644
+--- a/fs/proc/base.c
++++ b/fs/proc/base.c
+@@ -2984,6 +2984,9 @@ static const struct pid_entry tgid_base_stuff[] = {
+ 	REG("mounts",     S_IRUGO, proc_mounts_operations),
+ 	REG("mountinfo",  S_IRUGO, proc_mountinfo_operations),
+ 	REG("mountstats", S_IRUSR, proc_mountstats_operations),
++#ifdef CONFIG_PROCESS_RECLAIM
++	REG("reclaim", S_IWUSR|S_IWGRP|S_IWOTH, proc_reclaim_operations),
++#endif
+ #ifdef CONFIG_PROC_PAGE_MONITOR
+ 	REG("clear_refs", S_IWUSR, proc_clear_refs_operations),
+ 	REG("smaps",      S_IRUGO, proc_pid_smaps_operations),
+diff --git a/fs/proc/internal.h b/fs/proc/internal.h
+index e9b244e113a5..70e160e38119 100644
+--- a/fs/proc/internal.h
++++ b/fs/proc/internal.h
+@@ -209,6 +209,10 @@ extern const struct inode_operations proc_link_inode_operations;
+ 
+ extern const struct inode_operations proc_pid_link_inode_operations;
+ 
++#ifdef CONFIG_PROCESS_RECLAIM
++extern const struct file_operations proc_reclaim_operations;
++#endif
++
+ void proc_init_kmemcache(void);
+ void set_proc_pid_nlink(void);
+ extern struct inode *proc_get_inode(struct super_block *, struct proc_dir_entry *);
+diff --git a/fs/proc/task_mmu.c b/fs/proc/task_mmu.c
+index 0c319061fced..0f750dc2eda5 100644
+--- a/fs/proc/task_mmu.c
++++ b/fs/proc/task_mmu.c
+@@ -14,6 +14,8 @@
+ #include <linux/swap.h>
+ #include <linux/sched/mm.h>
+ #include <linux/swapops.h>
++#include <linux/ctype.h>
++#include <linux/mm_inline.h>
+ #include <linux/mmu_notifier.h>
+ #include <linux/page_idle.h>
+ #include <linux/shmem_fs.h>
+@@ -1662,6 +1664,262 @@ const struct file_operations proc_pagemap_operations = {
+ };
+ #endif /* CONFIG_PROC_PAGE_MONITOR */
+ 
++#ifdef CONFIG_PROCESS_RECLAIM
++static int reclaim_pte_range(pmd_t *pmd, unsigned long addr,
++				unsigned long end, struct mm_walk *walk)
++{
++	struct reclaim_param *rp = walk->private;
++	struct vm_area_struct *vma = rp->vma;
++	pte_t *pte, ptent;
++	spinlock_t *ptl;
++	struct page *page;
++	LIST_HEAD(page_list);
++	int isolated;
++	int reclaimed = 0;
++
++	split_huge_pmd(vma, pmd, addr);
++	if (pmd_trans_unstable(pmd) || (rp->is_task_anon && !rp->nr_to_reclaim))
++		return 0;
++
++cont:
++	isolated = 0;
++	pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
++	for (; addr != end; pte++, addr += PAGE_SIZE) {
++		ptent = *pte;
++		if (!pte_present(ptent))
++			continue;
++
++		page = vm_normal_page(vma, addr, ptent);
++		if (!page)
++			continue;
++
++		/*if (PageProtect(page))
++			continue;*/
++
++		if (isolate_lru_page(page))
++			continue;
++
++		list_add(&page->lru, &page_list);
++		inc_node_page_state(page, NR_ISOLATED_ANON +
++				page_is_file_cache(page));
++		isolated++;
++		rp->nr_scanned++;
++
++		if (rp->is_task_anon) {
++			if ((isolated >= SWAP_CLUSTER_MAX) ||
++				!rp->nr_to_reclaim)
++				break;
++		} else {
++			if (isolated >= SWAP_CLUSTER_MAX)
++				break;
++		}
++	}
++	pte_unmap_unlock(pte - 1, ptl);
++	reclaimed = reclaim_pages_from_list(&page_list, vma);
++	rp->nr_reclaimed += reclaimed;
++	rp->nr_to_reclaim -= reclaimed;
++	if (rp->nr_to_reclaim < 0)
++		rp->nr_to_reclaim = 0;
++
++	if (rp->is_task_anon) {
++		if (rp->nr_to_reclaim && (addr != end))
++			goto cont;
++	} else {
++		if (addr != end)
++			goto cont;
++	}
++
++	cond_resched();
++	return 0;
++}
++
++enum reclaim_type {
++	RECLAIM_FILE,
++	RECLAIM_ANON,
++	RECLAIM_ALL,
++	RECLAIM_RANGE,
++};
++
++struct reclaim_param reclaim_task_anon(struct task_struct *task,
++		int nr_to_reclaim)
++{
++	struct mm_struct *mm;
++	struct vm_area_struct *vma;
++	struct mm_walk reclaim_walk = {};
++	struct reclaim_param rp;
++
++	rp.nr_reclaimed = 0;
++	rp.nr_scanned = 0;
++	get_task_struct(task);
++	mm = get_task_mm(task);
++	if (!mm)
++		goto out;
++
++	reclaim_walk.mm = mm;
++	reclaim_walk.pmd_entry = reclaim_pte_range;
++
++	rp.nr_to_reclaim = nr_to_reclaim;
++	rp.is_task_anon = true;
++	reclaim_walk.private = &rp;
++
++	down_read(&mm->mmap_sem);
++	for (vma = mm->mmap; vma; vma = vma->vm_next) {
++		if (is_vm_hugetlb_page(vma) ||
++		   (vma->vm_flags & VM_MIXEDMAP))
++			continue;
++
++		if (vma->vm_file)
++			continue;
++
++		if (!rp.nr_to_reclaim)
++			break;
++
++		rp.vma = vma;
++		walk_page_range(vma->vm_start, vma->vm_end,
++			&reclaim_walk);
++	}
++
++	flush_tlb_mm(mm);
++	up_read(&mm->mmap_sem);
++	mmput(mm);
++out:
++	put_task_struct(task);
++	return rp;
++}
++
++static ssize_t reclaim_write(struct file *file, const char __user *buf,
++				size_t count, loff_t *ppos)
++{
++	struct task_struct *task;
++	char buffer[200];
++	struct mm_struct *mm;
++	struct vm_area_struct *vma;
++	enum reclaim_type type;
++	char *type_buf;
++	struct mm_walk reclaim_walk = {};
++	unsigned long start = 0;
++	unsigned long end = 0;
++	struct reclaim_param rp;
++
++	rp.is_task_anon = false;
++
++	memset(buffer, 0, sizeof(buffer));
++	if (count > sizeof(buffer) - 1)
++		count = sizeof(buffer) - 1;
++
++	if (copy_from_user(buffer, buf, count)) {
++		return -EFAULT;
++	}
++
++	type_buf = strstrip(buffer);
++	printk("++++++ do reclaim %s\n", type_buf);
++	if (!strcmp(type_buf, "file"))
++		type = RECLAIM_FILE;
++	else if (!strcmp(type_buf, "anon"))
++		type = RECLAIM_ANON;
++	else if (!strcmp(type_buf, "all"))
++		type = RECLAIM_ALL;
++	else if (isdigit(*type_buf))
++		type = RECLAIM_RANGE;
++	else
++		goto out_err;
++
++	if (type == RECLAIM_RANGE) {
++		char *token;
++		unsigned long long len, len_in, tmp;
++		token = strsep(&type_buf, " ");
++		if (!token)
++			goto out_err;
++		tmp = memparse(token, &token);
++		if (tmp & ~PAGE_MASK || tmp > ULONG_MAX)
++			goto out_err;
++		start = tmp;
++
++		token = strsep(&type_buf, " ");
++		if (!token)
++			goto out_err;
++		len_in = memparse(token, &token);
++		len = (len_in + ~PAGE_MASK) & PAGE_MASK;
++		if (len > ULONG_MAX)
++			goto out_err;
++		/*
++		 * Check to see whether len was rounded up from small -ve
++		 * to zero.
++		 */
++		if (len_in && !len)
++			goto out_err;
++
++		end = start + len;
++		if (end < start)
++			goto out_err;
++	}
++
++	task = get_proc_task(file->f_path.dentry->d_inode);
++	if (!task)
++		return -ESRCH;
++
++	mm = get_task_mm(task);
++	if (!mm)
++		goto out;
++
++	reclaim_walk.mm = mm;
++	reclaim_walk.pmd_entry = reclaim_pte_range;
++
++	rp.nr_to_reclaim = INT_MAX;
++	rp.nr_reclaimed = 0;
++	reclaim_walk.private = &rp;
++
++	down_read(&mm->mmap_sem);
++	if (type == RECLAIM_RANGE) {
++		vma = find_vma(mm, start);
++		while (vma) {
++			if (vma->vm_start > end)
++				break;
++			if (is_vm_hugetlb_page(vma) ||
++			   (vma->vm_flags & VM_MIXEDMAP))
++				continue;
++
++			rp.vma = vma;
++			walk_page_range(max(vma->vm_start, start),
++					min(vma->vm_end, end),
++					&reclaim_walk);
++			vma = vma->vm_next;
++		}
++	} else {
++		for (vma = mm->mmap; vma; vma = vma->vm_next) {
++			if (is_vm_hugetlb_page(vma) ||
++			   (vma->vm_flags & VM_MIXEDMAP))
++				continue;
++
++			if (type == RECLAIM_ANON && vma->vm_file)
++				continue;
++
++			if (type == RECLAIM_FILE && !vma->vm_file)
++				continue;
++
++			rp.vma = vma;
++			walk_page_range(vma->vm_start, vma->vm_end,
++				&reclaim_walk);
++		}
++	}
++
++	flush_tlb_mm(mm);
++	up_read(&mm->mmap_sem);
++	mmput(mm);
++out:
++	put_task_struct(task);
++	return count;
++
++out_err:
++	return -EINVAL;
++}
++
++const struct file_operations proc_reclaim_operations = {
++	.write		= reclaim_write,
++	.llseek		= noop_llseek,
++};
++#endif
++
+ #ifdef CONFIG_NUMA
+ 
+ struct numa_maps {
+diff --git a/include/linux/mm.h b/include/linux/mm.h
+index b8edce0a421a..e92781a78cbf 100644
+--- a/include/linux/mm.h
++++ b/include/linux/mm.h
+@@ -2912,5 +2912,20 @@ void __init setup_nr_node_ids(void);
+ static inline void setup_nr_node_ids(void) {}
+ #endif
+ 
++#ifdef CONFIG_PROCESS_RECLAIM
++struct reclaim_param {
++	struct vm_area_struct *vma;
++	/* Number of pages scanned */
++	int nr_scanned;
++	/* max pages to reclaim */
++	int nr_to_reclaim;
++	/* pages reclaimed */
++	int nr_reclaimed;
++	bool is_task_anon;
++};
++extern struct reclaim_param reclaim_task_anon(struct task_struct *task,
++											  int nr_to_reclaim);
++#endif
++
+ #endif /* __KERNEL__ */
+ #endif /* _LINUX_MM_H */
+diff --git a/include/linux/rmap.h b/include/linux/rmap.h
+index 988d176472df..91d1429c68d3 100644
+--- a/include/linux/rmap.h
++++ b/include/linux/rmap.h
+@@ -12,6 +12,11 @@
+ #include <linux/memcontrol.h>
+ #include <linux/highmem.h>
+ 
++extern int isolate_lru_page(struct page *page);
++extern void putback_lru_page(struct page *page);
++extern unsigned long reclaim_pages_from_list(struct list_head *page_list,
++											 struct vm_area_struct *vma);
++
+ /*
+  * The anon_vma heads a list of private "related" vmas, to scan if
+  * an anonymous page pointing to this anon_vma needs to be unmapped:
+diff --git a/mm/Kconfig b/mm/Kconfig
+index 036466b34e18..60f914fd1164 100644
+--- a/mm/Kconfig
++++ b/mm/Kconfig
+@@ -768,6 +768,22 @@ config PERCPU_STATS
+ 	  information includes global and per chunk statistics, which can
+ 	  be used to help understand percpu memory usage.
+ 
++config PROCESS_RECLAIM
++	bool "Enable process reclaim"
++	depends on PROC_FS
++	default n
++	help
++	  It allows to reclaim pages of the process by /proc/pid/reclaim.
++
++	  (echo file > /proc/PID/reclaim) reclaims file-backed pages only.
++	  (echo anon > /proc/PID/reclaim) reclaims anonymous pages only.
++	  (echo all > /proc/PID/reclaim) reclaims all pages.
++
++	  (echo addr size-byte > /proc/PID/reclaim) reclaims pages in
++	  (addr, addr + size-bytes) of the process.
++
++	  Any other vaule is ignored.
++
+ config GUP_BENCHMARK
+ 	bool "Enable infrastructure for get_user_pages_fast() benchmarking"
+ 	default n
+diff --git a/mm/vmscan.c b/mm/vmscan.c
+index ae5f36ffc0e5..75a86279cecf 100644
+--- a/mm/vmscan.c
++++ b/mm/vmscan.c
+@@ -1464,6 +1464,15 @@ static unsigned long shrink_page_list(struct list_head *page_list,
+ 			(*get_compound_page_dtor(page))(page);
+ 		} else
+ 			list_add(&page->lru, &free_pages);
++#ifdef CONFIG_PROCESS_RECLAIM
++		/*
++		 * If pagelist are from multiple zones, we should decrease
++		 * NR_ISOLATED_ANON + x on freed pages in here.
++		 */
++		if (!pgdat)
++			dec_node_page_state(page, NR_ISOLATED_ANON +
++					page_is_file_cache(page));
++#endif
+ 		continue;
+ 
+ activate_locked:
+@@ -1531,6 +1540,40 @@ unsigned long reclaim_clean_pages_from_list(struct zone *zone,
+ 	return ret;
+ }
+ 
++#ifdef CONFIG_PROCESS_RECLAIM
++unsigned long reclaim_pages_from_list(struct list_head *page_list,
++					struct vm_area_struct *vma)
++{
++	struct scan_control sc = {
++		.gfp_mask = GFP_KERNEL,
++		.priority = DEF_PRIORITY,
++		.may_writepage = 1,
++		.may_unmap = 1,
++		.may_swap = 1,
++		//.target_vma = vma,
++	};
++
++	unsigned long nr_reclaimed;
++	struct page *page;
++
++	list_for_each_entry(page, page_list, lru)
++		ClearPageActive(page);
++
++	nr_reclaimed = shrink_page_list(page_list, NULL, &sc,
++			TTU_IGNORE_ACCESS, NULL, true);
++
++	while (!list_empty(page_list)) {
++		page = lru_to_page(page_list);
++		list_del(&page->lru);
++		dec_node_page_state(page, NR_ISOLATED_ANON +
++				page_is_file_cache(page));
++		putback_lru_page(page);
++	}
++
++	return nr_reclaimed;
++}
++#endif
++
+ /*
+  * Attempt to remove the specified page from its LRU.  Only take this page
+  * if it is of the appropriate PageActive status.  Pages which are being
+-- 
+2.17.1
+

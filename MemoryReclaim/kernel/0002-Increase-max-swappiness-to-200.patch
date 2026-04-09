@@ -1,0 +1,51 @@
+From 1e06673ce57ff7aae85b1ab55268bc2834bd7dea Mon Sep 17 00:00:00 2001
+From: Bian Jin chen <kenjc.bian@rock-chips.com>
+Date: Tue, 22 Jun 2021 11:51:48 +0800
+Subject: [PATCH 2/2] Increase max swappiness to 200.
+
+This allow reclaim more anon pages then file pages.
+
+Signed-off-by: Bian Jin chen <kenjc.bian@rock-chips.com>
+Change-Id: Ide30595c608c1e640e35083e37941a4acb747e19
+---
+ kernel/sysctl.c | 3 ++-
+ mm/memcontrol.c | 2 +-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/sysctl.c b/kernel/sysctl.c
+index 56a40df1e73c..64859e4841c4 100644
+--- a/kernel/sysctl.c
++++ b/kernel/sysctl.c
+@@ -130,6 +130,7 @@ static unsigned long zero_ul;
+ static unsigned long one_ul = 1;
+ static unsigned long long_max = LONG_MAX;
+ static int one_hundred = 100;
++static int two_hundred = 200;
+ static int one_thousand = 1000;
+ #ifdef CONFIG_PRINTK
+ static int ten_thousand = 10000;
+@@ -1408,7 +1409,7 @@ static struct ctl_table vm_table[] = {
+ 		.mode		= 0644,
+ 		.proc_handler	= proc_dointvec_minmax,
+ 		.extra1		= &zero,
+-		.extra2		= &one_hundred,
++		.extra2		= &two_hundred,
+ 	},
+ #ifdef CONFIG_HUGETLB_PAGE
+ 	{
+diff --git a/mm/memcontrol.c b/mm/memcontrol.c
+index 87cd5bf1b487..ee2f38ea2be2 100644
+--- a/mm/memcontrol.c
++++ b/mm/memcontrol.c
+@@ -3551,7 +3551,7 @@ static int mem_cgroup_swappiness_write(struct cgroup_subsys_state *css,
+ {
+ 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+ 
+-	if (val > 100)
++	if (val > 200)
+ 		return -EINVAL;
+ 
+ 	if (css->parent)
+-- 
+2.17.1
+
