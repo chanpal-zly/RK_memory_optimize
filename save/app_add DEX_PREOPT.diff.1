@@ -1,0 +1,46 @@
+diff --git a/device/rockchip/rk356x/device.mk b/device/rockchip/rk356x/device.mk
+index a201e98143683c89df6653d3a527f08f83879f3d..434425c2314b0b69ba44e060451edbdce0974d14 100644
+--- a/device/rockchip/rk356x/device.mk
++++ b/device/rockchip/rk356x/device.mk
+@@ -14,6 +14,15 @@ PRODUCT_PACKAGES += \
+ #PRODUCT_PACKAGES += \
+ #    RockchipPinnerService
+ 
++
++PRODUCT_DEXPREOPT_SPEED_APPS += \
++    PotensicEve
++
++PRODUCT_PRODUCT_PROPERTIES += \
++    dalvik.vm.dex2oat-cpu-set=0,1,2,3 \
++    dalvik.vm.boot-dex2oat-threads=4 \
++    dalvik.vm.dex2oat-threads=4
++
+ # Disable partial updates
+ PRODUCT_PROPERTY_OVERRIDES += \
+     debug.hwui.use_partial_updates=false \
+diff --git a/packages/apps/PotensicEve/Android.mk b/packages/apps/PotensicEve/Android.mk
+index e694ccdf01e274c8d244382e823f22e844ce0223..c12aa2a71153f0af111ec4d554f9ef4295f09564 100644
+--- a/packages/apps/PotensicEve/Android.mk
++++ b/packages/apps/PotensicEve/Android.mk
+@@ -7,13 +7,15 @@ LOCAL_MODULE_CLASS := APPS
+ LOCAL_MODULE_TAGS := optional
+ LOCAL_BUILT_MODULE_STEM := package.apk
+ LOCAL_MODULE_SUFFIX := $(COMMON_ANDROID_PACKAGE_SUFFIX)
+-#LOCAL_PRIVILEGED_MODULE := true
+-LOCAL_ENFORCE_USES_LIBRARIES := false
+-#LOCAL_PROPRIETARY_MODULE := true
+ LOCAL_CERTIFICATE := platform
+-#LOCAL_OVERRIDES_PACKAGES := 
+ LOCAL_SRC_FILES := $(LOCAL_MODULE).apk
+-#LOCAL_REQUIRED_MODULES :=
+-#LOCAL_PREBUILT_JNI_LIBS :=
++
++LOCAL_USES_LIBRARIES := com.android.future.usb.accessory
++LOCAL_OPTIONAL_USES_LIBRARIES := androidx.window.extensions androidx.window.sidecar
++
++LOCAL_DEX_PREOPT := true
++LOCAL_DEX_PREOPT_APP_IMAGE := true
++LOCAL_DEX_PREOPT_FLAGS := --compiler-filter=speed
++
+ include $(BUILD_PREBUILT)
+ 

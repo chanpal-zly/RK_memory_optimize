@@ -1,0 +1,38 @@
+进程管理	减少缓存进程数，缩短服务超时时间	"DEFAULT_MAX_CACHED_PROCESSES：
+由32缩减为8
+DEFAULT_MAX_SERVICE_INACTIVITY：
+由30分钟缩减为10分钟"	"空闲内存增加，立即响应能力提升明显。（测试数据为设备正常开机进入主页未连接飞机）
+dumpsys activity settings | grep -A5 -B5 ""background""
+dumpsys activity | grep -B2 -A2 ""service_max"""	限制后台进程数量，缩短服务超时计算时间，理论上会更快回收缓存内存，增加空闲内存	"保证前台home应用可使用内存充足。
+
+
+
+设备刚开机meminfo对比：
+优化前：176,358K cached pss
+优化后：75,556K cached pss
+
+开机十分钟以上meminfo对比：
+优化前：45,287K cached pss
+优化后：0K cached pss"
+优化jvm参数	"[dalvik.vm.heapgrowthlimit]: [192m]
+[dalvik.vm.heapmaxfree]: [8m]
+[dalvik.vm.heapminfree]: [512k]
+[dalvik.vm.heapsize]: [512m]
+[dalvik.vm.heapstartsize]: [16m]
+[dalvik.vm.heaptargetutilization]: [0.75]"	"设置调整后配置：
+    dalvik.vm.heapstartsize=32m \
+    dalvik.vm.heapgrowthlimit=256m \
+    dalvik.vm.heapsize=512m \
+    dalvik.vm.heapminfree=4m \
+    dalvik.vm.heapmaxfree=24m \
+    dalvik.vm.heaptargetutilization=0.8 \
+    dalvik.vm.foreground-heap-growth-multiplier=2.0 \
+    dalvik.vm.concurrentgc=true \
+    dalvik.vm.gctype=precise \
+    dalvik.vm.dex2oat-threads=4 \
+    dalvik.vm.image-dex2oat-threads=4"	"dalvik.vm.foreground-heap-growth-multiplier=2.0
+前台应用堆内存增长系数2.0，比后台应用更快获得内存
+dalvik.vm.heaptargetutilization=0.8 \
+增加堆内存利用率
+dalvik.vm.heapgrowthlimit=256m \
+提升应用堆内存增长上限，避免前台应用存在内存不够的情况（2.0*256）"	调整后，适合"设备进程少，只需要Home应用流畅"的场景。	

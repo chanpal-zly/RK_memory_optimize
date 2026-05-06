@@ -1,0 +1,119 @@
+diff --git a/build/make/core/main.mk b/build/make/core/main.mk
+index c5a0baeef63190bf0107232213357489db6e0883..68782c6889a1c70a4c51a1d38dbb5717dd5a2f14 100644
+--- a/build/make/core/main.mk
++++ b/build/make/core/main.mk
+@@ -1259,6 +1259,8 @@ define product-installed-files
+   $(eval ### Filter out the overridden packages and executables before doing expansion) \
+   $(eval _pif_overrides := $(call module-overrides,$(_pif_modules))) \
+   $(eval _pif_modules := $(filter-out $(_pif_overrides), $(_pif_modules))) \
++  $(eval _pif_dels := $(call get-product-var,$(1),PRODUCT_DEL_PACKAGES)) \
++  $(eval _pif_modules := $(filter-out $(_pif_dels), $(_pif_modules))) \
+   $(eval ### Resolve the :32 :64 module name) \
+   $(eval _pif_modules := $(sort $(call resolve-bitness-for-modules,TARGET,$(_pif_modules)))) \
+   $(call expand-required-modules,_pif_modules,$(_pif_modules),$(_pif_overrides)) \
+diff --git a/build/make/core/product.mk b/build/make/core/product.mk
+index 8b45092c97194fa5c43618a9cb83364a1a4f23de..f0a9e4a0fc6999d4f4653dbf31b0f717544483d0 100644
+--- a/build/make/core/product.mk
++++ b/build/make/core/product.mk
+@@ -286,6 +286,9 @@ _product_single_value_vars += PRODUCT_ODM_DLKM_BASE_FS_PATH
+ # The first API level this product shipped with
+ _product_single_value_vars += PRODUCT_SHIPPING_API_LEVEL
+ 
++# Delete the not used module
++_product_single_value_vars += PRODUCT_DEL_PACKAGES
++
+ _product_list_vars += VENDOR_PRODUCT_RESTRICT_VENDOR_FILES
+ _product_list_vars += VENDOR_EXCEPTION_MODULES
+ _product_list_vars += VENDOR_EXCEPTION_PATHS
+diff --git a/device/rockchip/rk356x/device.mk b/device/rockchip/rk356x/device.mk
+index 2cedf75d3b5f7d56f6d9340f5cb25d11d9382e47..33b72695eee5eff446deeaf2ee5f45e4e18070a2 100644
+--- a/device/rockchip/rk356x/device.mk
++++ b/device/rockchip/rk356x/device.mk
+@@ -110,3 +110,58 @@ PRODUCT_PROPERTY_OVERRIDES += \
+                 ro.build.shutdown_timeout=6 \
+                 persist.enable_task_snapshots=false \
+                 ro.vendor.frameratelock=true
++#
++# add Rockchip delete module here
++#
++PRODUCT_DEL_PACKAGES += \
++                CtsShimPrivPrebuilt \
++                TelephonyProvider \
++                CalendarProvider \
++                WallpaperCropper \
++                HTMLViewer \
++                QuickSearchBox \
++                MmsService  \
++                SoundRecorder \
++                DownloadProviderUi \
++                PacProcessor \
++                SimAppDialog \
++                Contacts  \
++                RKUpdateService \
++                EasterEgg \
++                Camera2 \
++                NfcNci \
++                StatementService \
++                Calendar \
++                SharedStorageBackup \
++                RKDeviceTest \
++                PrintSpooler \
++                BasicDreams \
++                RkExplorer \
++                BuiltInPrintService \
++                RKLogsTool \
++                MusicFX \
++                OneTimeInitializer \
++                Telecom \
++                KeyChain \
++                PrintRecommendationService \
++                CameraExtensionsProxy \
++                ProxyHandler \
++                ManagedProvisioning \
++                SoundPicker \
++                PhotoTable \
++                WAPPushManager \
++                LiveWallpapersPicker \
++                StressTest \
++                Lightning \
++                ExactCalculator \
++                CtsShimPrebuilt \
++                VpnDialogs \
++                TeleService \
++                WallpaperBackup \
++                BlockedNumberProvider \
++                DeskClock \
++                Traceur \
++                WallpaperPicker \
++                RkVideoPlayer \
++                LatinIME \
++                Music \
++                librknn_api_android \
++                librknnhal_bridge.rockchip \
++                rockchip.hardware.neuralnetworks@1.0-impl \
++                rockchip.hardware.neuralnetworks@1.0-service \
++                public.libraries-rockchip \
++                com.android.extservices \
++                traced \
++                traced_probes \
++                DisplayCutoutEmulationCorner \
++                DisplayCutoutEmulationDouble \
++                NavigationBarModeGesturalWideBack \
++                OneHandedModeGestural \
++                DisplayCutoutEmulationHole \
++                DisplayCutoutEmulationTall \
++                NavigationBarMode3Button \
++                BackupRestoreConfirmation \
++                SettingsIntelligence \
++                NavigationBarModeGesturalExtraWideBack \
++                SecureElement \
++                LocalTransport \
++                DisplayCutoutEmulationWaterfall \
++                BookmarkProvider \
++                NavigationBarModeGesturalNarrowBack \
++                ContactsProvider \
++                OsuLogin \
++                RemoteProvisioner \
++                InputDevices \
++                FontNotoSerifSource \
++                UserDictionaryProvider
