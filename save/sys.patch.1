@@ -1,0 +1,915 @@
+diff --git a/frameworks/base/services/java/com/android/server/SystemServer.java b/frameworks/base/services/java/com/android/server/SystemServer.java
+index 86e6561d4c..518ae08793 100644
+--- a/frameworks/base/services/java/com/android/server/SystemServer.java
++++ b/frameworks/base/services/java/com/android/server/SystemServer.java
+@@ -204,6 +204,7 @@ import com.android.server.webkit.WebViewUpdateService;
+ import com.android.server.wm.ActivityTaskManagerService;
+ import com.android.server.wm.WindowManagerGlobalLock;
+ import com.android.server.wm.WindowManagerService;
++import com.android.server.CustomBluetoothScanService;
+ 
+ import dalvik.system.VMRuntime;
+ 
+@@ -245,8 +246,8 @@ public final class SystemServer implements Dumpable {
+             "com.android.server.backup.BackupManagerService$Lifecycle";
+     private static final String APPWIDGET_SERVICE_CLASS =
+             "com.android.server.appwidget.AppWidgetService";
+-    private static final String VOICE_RECOGNITION_MANAGER_SERVICE_CLASS =
+-            "com.android.server.voiceinteraction.VoiceInteractionManagerService";
++    //private static final String VOICE_RECOGNITION_MANAGER_SERVICE_CLASS =
++    //        "com.android.server.voiceinteraction.VoiceInteractionManagerService";
+     private static final String APP_HIBERNATION_SERVICE_CLASS =
+             "com.android.server.apphibernation.AppHibernationService";
+     private static final String PRINT_MANAGER_SERVICE_CLASS =
+@@ -295,7 +296,7 @@ public final class SystemServer implements Dumpable {
+             "com.android.server.usage.StorageStatsService$Lifecycle";
+     private static final String SEARCH_MANAGER_SERVICE_CLASS =
+             "com.android.server.search.SearchManagerService$Lifecycle";
+-    private static final String THERMAL_OBSERVER_CLASS =
++    /* private static final String THERMAL_OBSERVER_CLASS =
+             "com.google.android.clockwork.ThermalObserver";
+     private static final String WEAR_CONNECTIVITY_SERVICE_CLASS =
+             "com.android.clockwork.connectivity.WearConnectivityService";
+@@ -310,7 +311,7 @@ public final class SystemServer implements Dumpable {
+     private static final String WEAR_TIME_SERVICE_CLASS =
+             "com.google.android.clockwork.time.WearTimeService";
+     private static final String WEAR_GLOBAL_ACTIONS_SERVICE_CLASS =
+-            "com.android.clockwork.globalactions.GlobalActionsService";
++            "com.android.clockwork.globalactions.GlobalActionsService"; */
+     private static final String ACCOUNT_SERVICE_CLASS =
+             "com.android.server.accounts.AccountManagerService$Lifecycle";
+     private static final String CONTENT_SERVICE_CLASS =
+@@ -331,12 +332,12 @@ public final class SystemServer implements Dumpable {
+             "com.android.server.texttospeech.TextToSpeechManagerService";
+     private static final String TIME_ZONE_RULES_MANAGER_SERVICE_CLASS =
+             "com.android.server.timezone.RulesManagerService$Lifecycle";
+-    private static final String IOT_SERVICE_CLASS =
+-            "com.android.things.server.IoTSystemService";
++    //private static final String IOT_SERVICE_CLASS =
++    //        "com.android.things.server.IoTSystemService";
+     private static final String SLICE_MANAGER_SERVICE_CLASS =
+             "com.android.server.slice.SliceManagerService$Lifecycle";
+-    private static final String CAR_SERVICE_HELPER_SERVICE_CLASS =
+-            "com.android.internal.car.CarServiceHelperService";
++    //private static final String CAR_SERVICE_HELPER_SERVICE_CLASS =
++    //        "com.android.internal.car.CarServiceHelperService";
+     private static final String TIME_DETECTOR_SERVICE_CLASS =
+             "com.android.server.timedetector.TimeDetectorService$Lifecycle";
+     private static final String TIME_ZONE_DETECTOR_SERVICE_CLASS =
+@@ -385,7 +386,7 @@ public final class SystemServer implements Dumpable {
+     private static final String ROLE_SERVICE_CLASS = "com.android.role.RoleService";
+     private static final String GAME_MANAGER_SERVICE_CLASS =
+             "com.android.server.app.GameManagerService$Lifecycle";
+-    private static final String UWB_SERVICE_CLASS = "com.android.server.uwb.UwbService";
++    //private static final String UWB_SERVICE_CLASS = "com.android.server.uwb.UwbService";
+ 
+     private static final String TETHERING_CONNECTOR_CLASS = "android.net.ITetheringConnector";
+ 
+@@ -702,6 +703,10 @@ public final class SystemServer implements Dumpable {
+     }
+ 
+     private void run() {
++        int currentPriority = Process.getThreadPriority(Process.myPid());
++        Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO);
++        //Process.setProcessGroup(Process.myPid(), Process.THREAD_GROUP_TOP_APP);
++        //SystemProperties.set("r254.ss.run", "1");
+         TimingsTraceAndSlog t = new TimingsTraceAndSlog();
+         try {
+             t.traceBegin("InitBeforeStartServices");
+@@ -736,8 +741,8 @@ public final class SystemServer implements Dumpable {
+                 final String languageTag = Locale.getDefault().toLanguageTag();
+ 
+                 SystemProperties.set("persist.sys.locale", languageTag);
+-                SystemProperties.set("persist.sys.language", "");
+-                SystemProperties.set("persist.sys.country", "");
++                //SystemProperties.set("persist.sys.language", "");
++                //SystemProperties.set("persist.sys.country", "");
+                 SystemProperties.set("persist.sys.localevar", "");
+             }
+ 
+@@ -798,7 +803,7 @@ public final class SystemServer implements Dumpable {
+ 
+             // Prepare the main looper thread (this thread).
+             android.os.Process.setThreadPriority(
+-                    android.os.Process.THREAD_PRIORITY_FOREGROUND);
++                    android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
+             android.os.Process.setCanSelfBackground(false);
+             Looper.prepareMainLooper();
+             Looper.getMainLooper().setSlowLogThresholdMs(
+@@ -1118,12 +1123,12 @@ public final class SystemServer implements Dumpable {
+         mSystemServiceManager.startService(LightsService.class);
+         t.traceEnd();
+ 
+-        t.traceBegin("StartSidekickService");
++        /* t.traceBegin("StartSidekickService");
+         // Package manager isn't started yet; need to use SysProp not hardware feature
+         if (SystemProperties.getBoolean("config.enable_sidekick_graphics", false)) {
+             mSystemServiceManager.startService(WEAR_SIDEKICK_SERVICE_CLASS);
+         }
+-        t.traceEnd();
++        t.traceEnd(); */
+ 
+         // Display manager is needed to provide display metrics before package manager
+         // starts up.
+@@ -1176,6 +1181,14 @@ public final class SystemServer implements Dumpable {
+         SystemServerDexLoadReporter.configureSystemServerDexReporter(mPackageManagerService);
+ 
+         mFirstBoot = mPackageManagerService.isFirstBoot();
++        if(mFirstBoot) {
++            Slog.w(TAG, "windra_b set r254.is.first.boot = 1");
++            SystemProperties.set("r254.is.first.boot", "1");
++        }else {
++            Slog.w(TAG, "windra_b set r254.is.first.boot = 0");
++            SystemProperties.set("r254.is.first.boot", "0");
++        }
++
+         mPackageManager = mSystemContext.getPackageManager();
+         t.traceEnd();
+         if (!mRuntimeRestart && !isFirstBootOrUpgrade()) {
+@@ -1310,9 +1323,9 @@ public final class SystemServer implements Dumpable {
+         t.traceEnd();
+ 
+         // Service to capture bugreports.
+-        t.traceBegin("StartBugreportManagerService");
++        /* t.traceBegin("StartBugreportManagerService");
+         mSystemServiceManager.startService(BugreportManagerService.class);
+-        t.traceEnd();
++        t.traceEnd(); */
+ 
+         // Serivce for GPU and GPU driver.
+         t.traceBegin("GpuService");
+@@ -1348,25 +1361,25 @@ public final class SystemServer implements Dumpable {
+         HardwarePropertiesManagerService hardwarePropertiesService = null;
+         PacProxyService pacProxyService = null;
+ 
+-        boolean disableSystemTextClassifier = SystemProperties.getBoolean(
+-                "config.disable_systemtextclassifier", false);
++        //boolean disableSystemTextClassifier = SystemProperties.getBoolean(
++        //        "config.disable_systemtextclassifier", false);
+ 
+         boolean disableNetworkTime = SystemProperties.getBoolean("config.disable_networktime",
+                 false);
+-        boolean disableCameraService = SystemProperties.getBoolean("config.disable_cameraservice",
+-                false);
+-        boolean enableLeftyService = SystemProperties.getBoolean("config.enable_lefty", false);
++        //boolean disableCameraService = SystemProperties.getBoolean("config.disable_cameraservice",
++        //        false);
++        //boolean enableLeftyService = SystemProperties.getBoolean("config.enable_lefty", false);
+ 
+         boolean isEmulator = SystemProperties.get("ro.boot.qemu").equals("1");
+ 
+-        boolean isWatch = context.getPackageManager().hasSystemFeature(
+-                PackageManager.FEATURE_WATCH);
++        //boolean isWatch = context.getPackageManager().hasSystemFeature(
++        //        PackageManager.FEATURE_WATCH);
+ 
+         boolean isArc = context.getPackageManager().hasSystemFeature(
+                 "org.chromium.arc");
+ 
+-        boolean enableVrService = context.getPackageManager().hasSystemFeature(
+-                PackageManager.FEATURE_VR_MODE_HIGH_PERFORMANCE);
++        //boolean enableVrService = context.getPackageManager().hasSystemFeature(
++        //        PackageManager.FEATURE_VR_MODE_HIGH_PERFORMANCE);
+ 
+         // For debugging RescueParty
+         if (Build.IS_DEBUGGABLE && SystemProperties.getBoolean("debug.crash_system", false)) {
+@@ -1406,9 +1419,9 @@ public final class SystemServer implements Dumpable {
+             ServiceManager.addService("scheduling_policy", new SchedulingPolicyService());
+             t.traceEnd();
+ 
+-            t.traceBegin("StartTelecomLoaderService");
++            /* t.traceBegin("StartTelecomLoaderService");
+             mSystemServiceManager.startService(TelecomLoaderService.class);
+-            t.traceEnd();
++            t.traceEnd(); */
+ 
+             t.traceBegin("StartTelephonyRegistry");
+             telephonyRegistry = new TelephonyRegistry(
+@@ -1460,12 +1473,12 @@ public final class SystemServer implements Dumpable {
+             ServiceManager.addService("dynamic_system", dynamicSystem);
+             t.traceEnd();
+ 
+-            if (!isWatch) {
++            /* if (!isWatch) {
+                 t.traceBegin("StartConsumerIrService");
+                 consumerIr = new ConsumerIrService(context);
+                 ServiceManager.addService(Context.CONSUMER_IR_SERVICE, consumerIr);
+                 t.traceEnd();
+-            }
++            } */
+ 
+             t.traceBegin("StartAlarmManagerService");
+             mSystemServiceManager.startService(ALARM_MANAGER_SERVICE_CLASS);
+@@ -1479,11 +1492,11 @@ public final class SystemServer implements Dumpable {
+             mSystemServiceManager.startService(DeviceStateManagerService.class);
+             t.traceEnd();
+ 
+-            if (!disableCameraService) {
++            /* if (!disableCameraService) {
+                 t.traceBegin("StartCameraServiceProxy");
+                 mSystemServiceManager.startService(CameraServiceProxy.class);
+                 t.traceEnd();
+-            }
++            } */
+ 
+             t.traceBegin("StartWindowManagerService");
+             // WMS needs sensor service ready
+@@ -1514,11 +1527,11 @@ public final class SystemServer implements Dumpable {
+                 traceLog.traceEnd();
+             }, START_HIDL_SERVICES);
+ 
+-            if (!isWatch && enableVrService) {
++            /* if (!isWatch && enableVrService) {
+                 t.traceBegin("StartVrManagerService");
+                 mSystemServiceManager.startService(VrManagerService.class);
+                 t.traceEnd();
+-            }
++            } */
+ 
+             t.traceBegin("StartInputManager");
+             inputManager.setWindowManagerCallbacks(wm.getInputManagerCallback());
+@@ -1579,7 +1592,7 @@ public final class SystemServer implements Dumpable {
+ 
+         // Before things start rolling, be sure we have decided whether
+         // we are in safe mode.
+-        final boolean safeMode = wm.detectSafeMode();
++        final boolean safeMode = false;//wm.detectSafeMode();
+         if (safeMode) {
+             // If yes, immediately turn on the global setting for airplane mode.
+             // Note that this does not send broadcasts at this stage because
+@@ -1658,7 +1671,7 @@ public final class SystemServer implements Dumpable {
+         mSystemServiceManager.startService(UiModeManagerService.class);
+         t.traceEnd();
+ 
+-        if (!mOnlyCore) {
++        /* if (!mOnlyCore) {
+             t.traceBegin("UpdatePackagesIfNeeded");
+             try {
+                 Watchdog.getInstance().pauseWatchingCurrentThread("dexopt");
+@@ -1677,7 +1690,7 @@ public final class SystemServer implements Dumpable {
+         } catch (Throwable e) {
+             reportWtf("performing fstrim", e);
+         }
+-        t.traceEnd();
++        t.traceEnd(); */
+ 
+         final DevicePolicyManagerService.Lifecycle dpms;
+         if (mFactoryTestMode == FactoryTest.FACTORY_TEST_LOW_LEVEL) {
+@@ -1693,7 +1706,7 @@ public final class SystemServer implements Dumpable {
+             }
+             t.traceEnd();
+ 
+-            final boolean hasPdb = !SystemProperties.get(PERSISTENT_DATA_BLOCK_PROP).equals("");
++            /* final boolean hasPdb = !SystemProperties.get(PERSISTENT_DATA_BLOCK_PROP).equals("");
+             if (hasPdb) {
+                 t.traceBegin("StartPersistentDataBlock");
+                 mSystemServiceManager.startService(PersistentDataBlockService.class);
+@@ -1709,7 +1722,7 @@ public final class SystemServer implements Dumpable {
+                 t.traceBegin("StartOemLockService");
+                 mSystemServiceManager.startService(OemLockService.class);
+                 t.traceEnd();
+-            }
++            } */
+ 
+             t.traceBegin("StartDeviceIdleController");
+             mSystemServiceManager.startService(DEVICE_IDLE_CONTROLLER_CLASS);
+@@ -1721,7 +1734,7 @@ public final class SystemServer implements Dumpable {
+             dpms = mSystemServiceManager.startService(DevicePolicyManagerService.Lifecycle.class);
+             t.traceEnd();
+ 
+-            if (!isWatch) {
++            //if (!isWatch) {
+                 t.traceBegin("StartStatusBarManagerService");
+                 try {
+                     statusBar = new StatusBarManagerService(context);
+@@ -1730,9 +1743,9 @@ public final class SystemServer implements Dumpable {
+                     reportWtf("starting StatusBarManagerService", e);
+                 }
+                 t.traceEnd();
+-            }
++            //}
+ 
+-            if (deviceHasConfigString(context,
++            /* if (deviceHasConfigString(context,
+                     R.string.config_defaultMusicRecognitionService)) {
+                 t.traceBegin("StartMusicRecognitionManagerService");
+                 mSystemServiceManager.startService(MUSIC_RECOGNITION_MANAGER_SERVICE_CLASS);
+@@ -1740,16 +1753,16 @@ public final class SystemServer implements Dumpable {
+             } else {
+                 Slog.d(TAG,
+                         "MusicRecognitionManagerService not defined by OEM or disabled by flag");
+-            }
++            } */
+ 
+             startContentCaptureService(context, t);
+             startAttentionService(context, t);
+             startRotationResolverService(context, t);
+             startSystemCaptionsManagerService(context, t);
+-            startTextToSpeechManagerService(context, t);
++            // startTextToSpeechManagerService(context, t);
+ 
+             // System Speech Recognition Service
+-            t.traceBegin("StartSpeechRecognitionManagerService");
++            /* t.traceBegin("StartSpeechRecognitionManagerService");
+             mSystemServiceManager.startService(SPEECH_RECOGNITION_MANAGER_SERVICE_CLASS);
+             t.traceEnd();
+ 
+@@ -1769,7 +1782,7 @@ public final class SystemServer implements Dumpable {
+                 t.traceEnd();
+             } else {
+                 Slog.d(TAG, "ContentSuggestionsService not defined by OEM");
+-            }
++            } */
+ 
+             // Search UI manager service
+             // TODO: add deviceHasConfigString(context, R.string.config_defaultSearchUiService)
+@@ -1818,20 +1831,20 @@ public final class SystemServer implements Dumpable {
+             }
+             t.traceEnd();
+ 
+-            t.traceBegin("StartFontManagerService");
++            /* t.traceBegin("StartFontManagerService");
+             mSystemServiceManager.startService(new FontManagerService.Lifecycle(context, safeMode));
+-            t.traceEnd();
++            t.traceEnd(); */
+ 
+             t.traceBegin("StartTextServicesManager");
+             mSystemServiceManager.startService(TextServicesManagerService.Lifecycle.class);
+             t.traceEnd();
+ 
+-            if (!disableSystemTextClassifier) {
++             /* if (!disableSystemTextClassifier) {
+                 t.traceBegin("StartTextClassificationManagerService");
+                 mSystemServiceManager
+                         .startService(TextClassificationManagerService.Lifecycle.class);
+                 t.traceEnd();
+-            }
++            } */
+ 
+             t.traceBegin("StartNetworkScoreService");
+             mSystemServiceManager.startService(NetworkScoreService.Lifecycle.class);
+@@ -1869,7 +1882,7 @@ public final class SystemServer implements Dumpable {
+                 t.traceEnd();
+             }
+ 
+-            if (context.getPackageManager().hasSystemFeature(
++            /*if (context.getPackageManager().hasSystemFeature(
+                     PackageManager.FEATURE_WIFI_RTT)) {
+                 t.traceBegin("StartRttService");
+                 mSystemServiceManager.startServiceFromJar(
+@@ -1883,7 +1896,7 @@ public final class SystemServer implements Dumpable {
+                 mSystemServiceManager.startServiceFromJar(
+                         WIFI_AWARE_SERVICE_CLASS, WIFI_APEX_SERVICE_JAR_PATH);
+                 t.traceEnd();
+-            }
++            } */
+ 
+             if (context.getPackageManager().hasSystemFeature(
+                     PackageManager.FEATURE_WIFI_DIRECT)) {
+@@ -1893,7 +1906,7 @@ public final class SystemServer implements Dumpable {
+                 t.traceEnd();
+             }
+ 
+-            if (context.getPackageManager().hasSystemFeature(
++            /* if (context.getPackageManager().hasSystemFeature(
+                     PackageManager.FEATURE_LOWPAN)) {
+                 t.traceBegin("StartLowpan");
+                 mSystemServiceManager.startService(LOWPAN_SERVICE_CLASS);
+@@ -1905,7 +1918,7 @@ public final class SystemServer implements Dumpable {
+                 t.traceBegin("StartEthernet");
+                 mSystemServiceManager.startService(ETHERNET_SERVICE_CLASS);
+                 t.traceEnd();
+-            }
++            } */
+ 
+             t.traceBegin("StartPacProxyService");
+             try {
+@@ -1943,7 +1956,7 @@ public final class SystemServer implements Dumpable {
+             }
+             t.traceEnd();
+ 
+-            t.traceBegin("StartNsdService");
++            /*t.traceBegin("StartNsdService");
+             try {
+                 serviceDiscovery = NsdService.create(context);
+                 ServiceManager.addService(
+@@ -1951,7 +1964,7 @@ public final class SystemServer implements Dumpable {
+             } catch (Throwable e) {
+                 reportWtf("starting Service Discovery Service", e);
+             }
+-            t.traceEnd();
++            t.traceEnd();*/
+ 
+             t.traceBegin("StartSystemUpdateManagerService");
+             try {
+@@ -1972,7 +1985,7 @@ public final class SystemServer implements Dumpable {
+             t.traceEnd();
+ 
+             // $_rbox_$_modify_$_aisx: added 2017-06-27, add RkDisplayDeviceManagementService
+-            if (mPackageManager.hasSystemFeature(PackageManager.FEATURE_ROCKCHIP_DISPLAY)) {
++            /*if (mPackageManager.hasSystemFeature(PackageManager.FEATURE_ROCKCHIP_DISPLAY)) {
+                 Slog.i(TAG, "addService drm_device_management");
+                 try {
+                     ServiceManager.addService("drm_device_management",
+@@ -1990,7 +2003,7 @@ public final class SystemServer implements Dumpable {
+                 } catch (Throwable e) {
+                     Slog.e(TAG, "Failure starting RkAudioSettingManager Service", e);
+                 }
+-            }
++            }*/
+ 
+             t.traceBegin("StartNotificationManager");
+             mSystemServiceManager.startService(NotificationManagerService.class);
+@@ -2008,14 +2021,14 @@ public final class SystemServer implements Dumpable {
+             mSystemServiceManager.startService(LocationManagerService.Lifecycle.class);
+             t.traceEnd();
+ 
+-            t.traceBegin("StartCountryDetectorService");
++            /*t.traceBegin("StartCountryDetectorService");
+             try {
+                 countryDetector = new CountryDetectorService(context);
+                 ServiceManager.addService(Context.COUNTRY_DETECTOR, countryDetector);
+             } catch (Throwable e) {
+                 reportWtf("starting Country Detector", e);
+             }
+-            t.traceEnd();
++            t.traceEnd();*/
+ 
+             t.traceBegin("StartTimeDetectorService");
+             try {
+@@ -2033,7 +2046,7 @@ public final class SystemServer implements Dumpable {
+             }
+             t.traceEnd();
+ 
+-            t.traceBegin("StartLocationTimeZoneManagerService");
++            /*t.traceBegin("StartLocationTimeZoneManagerService");
+             try {
+                 mSystemServiceManager.startService(LOCATION_TIME_ZONE_MANAGER_SERVICE_CLASS);
+             } catch (Throwable e) {
+@@ -2059,7 +2072,7 @@ public final class SystemServer implements Dumpable {
+                     reportWtf("starting Search Service", e);
+                 }
+                 t.traceEnd();
+-            }
++            }*/
+ 
+             if (context.getResources().getBoolean(R.bool.config_enableWallpaperService)) {
+                 t.traceBegin("StartWallpaperManagerService");
+@@ -2083,7 +2096,7 @@ public final class SystemServer implements Dumpable {
+             }
+             t.traceEnd();
+ 
+-            t.traceBegin("StartSoundTriggerMiddlewareService");
++            /*t.traceBegin("StartSoundTriggerMiddlewareService");
+             mSystemServiceManager.startService(SoundTriggerMiddlewareService.Lifecycle.class);
+             t.traceEnd();
+ 
+@@ -2118,7 +2131,7 @@ public final class SystemServer implements Dumpable {
+                 t.traceBegin("StartMidiManager");
+                 mSystemServiceManager.startService(MIDI_SERVICE_CLASS);
+                 t.traceEnd();
+-            }
++            }*/
+ 
+             // Start ADB Debugging Service
+             t.traceBegin("StartAdbService");
+@@ -2139,7 +2152,7 @@ public final class SystemServer implements Dumpable {
+                 t.traceEnd();
+             }
+ 
+-            if (!isWatch) {
++            /* if (!isWatch) {
+                 t.traceBegin("StartSerialService");
+                 try {
+                     // Serial port support
+@@ -2149,7 +2162,7 @@ public final class SystemServer implements Dumpable {
+                     Slog.e(TAG, "Failure starting SerialService", e);
+                 }
+                 t.traceEnd();
+-            }
++            } */
+ 
+             t.traceBegin("StartHardwarePropertiesManagerService");
+             try {
+@@ -2161,9 +2174,9 @@ public final class SystemServer implements Dumpable {
+             }
+             t.traceEnd();
+ 
+-            t.traceBegin("StartTwilightService");
++            /* t.traceBegin("StartTwilightService");
+             mSystemServiceManager.startService(TwilightService.class);
+-            t.traceEnd();
++            t.traceEnd(); */
+ 
+             t.traceBegin("StartColorDisplay");
+             mSystemServiceManager.startService(ColorDisplayService.class);
+@@ -2174,9 +2187,9 @@ public final class SystemServer implements Dumpable {
+             mSystemServiceManager.startService(JOB_SCHEDULER_SERVICE_CLASS);
+             t.traceEnd();
+ 
+-            t.traceBegin("StartSoundTrigger");
++            /*t.traceBegin("StartSoundTrigger");
+             mSystemServiceManager.startService(SoundTriggerService.class);
+-            t.traceEnd();
++            t.traceEnd();*/
+ 
+             t.traceBegin("StartTrustManager");
+             mSystemServiceManager.startService(TrustManagerService.class);
+@@ -2188,7 +2201,7 @@ public final class SystemServer implements Dumpable {
+                 t.traceEnd();
+             }
+ 
+-            if (mPackageManager.hasSystemFeature(PackageManager.FEATURE_APP_WIDGETS)
++            /* if (mPackageManager.hasSystemFeature(PackageManager.FEATURE_APP_WIDGETS)
+                     || context.getResources().getBoolean(R.bool.config_enableAppWidgetService)) {
+                 t.traceBegin("StartAppWidgetService");
+                 mSystemServiceManager.startService(APPWIDGET_SERVICE_CLASS);
+@@ -2211,7 +2224,7 @@ public final class SystemServer implements Dumpable {
+                 t.traceBegin("StartGestureLauncher");
+                 mSystemServiceManager.startService(GestureLauncherService.class);
+                 t.traceEnd();
+-            }
++            } */
+             t.traceBegin("StartSensorNotification");
+             mSystemServiceManager.startService(SensorNotificationService.class);
+             t.traceEnd();
+@@ -2242,16 +2255,16 @@ public final class SystemServer implements Dumpable {
+             // required for safe time zone updates might be broken. RuleManagerService cannot do
+             // this check when mOnlyCore == true, so we don't enable the service in this case.
+             // This service requires that JobSchedulerService is already started when it starts.
+-            final boolean startRulesManagerService =
++            /*final boolean startRulesManagerService =
+                     !mOnlyCore && context.getResources().getBoolean(
+                             R.bool.config_enableUpdateableTimeZoneRules);
+             if (startRulesManagerService) {
+                 t.traceBegin("StartTimeZoneRulesManagerService");
+                 mSystemServiceManager.startService(TIME_ZONE_RULES_MANAGER_SERVICE_CLASS);
+                 t.traceEnd();
+-            }
++            }*/
+ 
+-            if (!isWatch && !disableNetworkTime) {
++            if (!disableNetworkTime) {
+                 t.traceBegin("StartNetworkTimeUpdateService");
+                 try {
+                     networkTimeUpdater = new NetworkTimeUpdateService(context);
+@@ -2262,7 +2275,7 @@ public final class SystemServer implements Dumpable {
+                 t.traceEnd();
+             }
+ 
+-            t.traceBegin("CertBlacklister");
++            /*t.traceBegin("CertBlacklister");
+             try {
+                 CertBlacklister blacklister = new CertBlacklister(context);
+             } catch (Throwable e) {
+@@ -2279,14 +2292,14 @@ public final class SystemServer implements Dumpable {
+ 
+             t.traceBegin(START_BLOB_STORE_SERVICE);
+             mSystemServiceManager.startService(BLOB_STORE_MANAGER_SERVICE_CLASS);
+-            t.traceEnd();
++            t.traceEnd();*/
+ 
+             // Dreams (interactive idle-time views, a/k/a screen savers, and doze mode)
+             t.traceBegin("StartDreamManager");
+             mSystemServiceManager.startService(DreamManagerService.class);
+             t.traceEnd();
+ 
+-            t.traceBegin("AddGraphicsStatsService");
++            /*t.traceBegin("AddGraphicsStatsService");
+             ServiceManager.addService(GraphicsStatsService.GRAPHICS_STATS_SERVICE,
+                     new GraphicsStatsService(context));
+             t.traceEnd();
+@@ -2311,13 +2324,19 @@ public final class SystemServer implements Dumpable {
+ 
+             t.traceBegin("StartRestrictionManager");
+             mSystemServiceManager.startService(RestrictionsManagerService.class);
+-            t.traceEnd();
++            t.traceEnd();*/
++
++            if (mPackageManager.hasSystemFeature(PackageManager.FEATURE_COMPANION_DEVICE_SETUP)) {
++                t.traceBegin("StartCompanionDeviceManager");
++                mSystemServiceManager.startService(COMPANION_DEVICE_MANAGER_SERVICE_CLASS);
++                t.traceEnd();
++            }
+ 
+             t.traceBegin("StartMediaSessionService");
+             mSystemServiceManager.startService(MEDIA_SESSION_SERVICE_CLASS);
+             t.traceEnd();
+ 
+-            if (mPackageManager.hasSystemFeature(PackageManager.FEATURE_HDMI_CEC)) {
++            /*if (mPackageManager.hasSystemFeature(PackageManager.FEATURE_HDMI_CEC)) {
+                 t.traceBegin("StartHdmiControlService");
+                 mSystemServiceManager.startService(HdmiControlService.class);
+                 t.traceEnd();
+@@ -2347,7 +2366,7 @@ public final class SystemServer implements Dumpable {
+                 t.traceBegin("StartTvRemoteService");
+                 mSystemServiceManager.startService(TvRemoteService.class);
+                 t.traceEnd();
+-            }
++            } */
+ 
+             t.traceBegin("StartMediaRouterService");
+             try {
+@@ -2358,7 +2377,7 @@ public final class SystemServer implements Dumpable {
+             }
+             t.traceEnd();
+ 
+-            final boolean hasFeatureFace
++            /* final boolean hasFeatureFace
+                     = mPackageManager.hasSystemFeature(PackageManager.FEATURE_FACE);
+             final boolean hasFeatureIris
+                     = mPackageManager.hasSystemFeature(PackageManager.FEATURE_IRIS);
+@@ -2392,7 +2411,7 @@ public final class SystemServer implements Dumpable {
+ 
+             t.traceBegin("StartAuthService");
+             mSystemServiceManager.startService(AuthService.class);
+-            t.traceEnd();
++            t.traceEnd(); */
+ 
+ 
+             t.traceBegin("StartBackgroundDexOptService");
+@@ -2403,7 +2422,7 @@ public final class SystemServer implements Dumpable {
+             }
+             t.traceEnd();
+ 
+-            if (!isWatch) {
++            /*if (!isWatch) {
+                 // We don't run this on watches as there are no plans to use the data logged
+                 // on watch devices.
+                 t.traceBegin("StartDynamicCodeLoggingService");
+@@ -2423,7 +2442,7 @@ public final class SystemServer implements Dumpable {
+                     reportWtf("StartPruneInstantAppsJobService", e);
+                 }
+                 t.traceEnd();
+-            }
++            }*/
+ 
+             // LauncherAppsService uses ShortcutService.
+             t.traceBegin("StartShortcutServiceLifecycle");
+@@ -2438,22 +2457,22 @@ public final class SystemServer implements Dumpable {
+             mSystemServiceManager.startService(CrossProfileAppsService.class);
+             t.traceEnd();
+ 
+-            t.traceBegin("StartPeopleService");
++            /*t.traceBegin("StartPeopleService");
+             mSystemServiceManager.startService(PeopleService.class);
+-            t.traceEnd();
++            t.traceEnd();*/
+ 
+             t.traceBegin("StartMediaMetricsManager");
+             mSystemServiceManager.startService(MediaMetricsManagerService.class);
+             t.traceEnd();
+         }
+ 
+-        if (!isWatch) {
++        //if (!isWatch) {
+             t.traceBegin("StartMediaProjectionManager");
+             mSystemServiceManager.startService(MediaProjectionManagerService.class);
+             t.traceEnd();
+-        }
++        //}
+ 
+-        if (isWatch) {
++        /* if (isWatch) {
+             // Must be started before services that depend it, e.g. WearConnectivityService
+             t.traceBegin("StartWearPowerService");
+             mSystemServiceManager.startService(WEAR_POWER_SERVICE_CLASS);
+@@ -2482,28 +2501,28 @@ public final class SystemServer implements Dumpable {
+             t.traceEnd();
+         }
+ 
+-        if (!mPackageManager.hasSystemFeature(PackageManager.FEATURE_SLICES_DISABLED)) {
+-            t.traceBegin("StartSliceManagerService");
+-            mSystemServiceManager.startService(SLICE_MANAGER_SERVICE_CLASS);
+-            t.traceEnd();
+-        }
+-
+         if (context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_EMBEDDED)) {
+             t.traceBegin("StartIoTSystemService");
+             mSystemServiceManager.startService(IOT_SERVICE_CLASS);
+             t.traceEnd();
+         }
+ 
+-        // Statsd helper
+-        t.traceBegin("StartStatsCompanion");
+-        mSystemServiceManager.startServiceFromJar(
+-                STATS_COMPANION_LIFECYCLE_CLASS, STATS_COMPANION_APEX_PATH);
+-        t.traceEnd();
+-
+         // Reboot Readiness
+         t.traceBegin("StartRebootReadinessManagerService");
+         mSystemServiceManager.startServiceFromJar(
+                 REBOOT_READINESS_LIFECYCLE_CLASS, SCHEDULING_APEX_PATH);
++        t.traceEnd();*/
++
++        if (!mPackageManager.hasSystemFeature(PackageManager.FEATURE_SLICES_DISABLED)) {
++            t.traceBegin("StartSliceManagerService");
++            mSystemServiceManager.startService(SLICE_MANAGER_SERVICE_CLASS);
++            t.traceEnd();
++        }
++
++        // Statsd helper
++        t.traceBegin("StartStatsCompanion");
++        mSystemServiceManager.startServiceFromJar(
++                STATS_COMPANION_LIFECYCLE_CLASS, STATS_COMPANION_APEX_PATH);
+         t.traceEnd();
+ 
+         // Statsd pulled atoms
+@@ -2512,7 +2531,7 @@ public final class SystemServer implements Dumpable {
+         t.traceEnd();
+ 
+         // Incidentd and dumpstated helper
+-        t.traceBegin("StartIncidentCompanionService");
++        /*t.traceBegin("StartIncidentCompanionService");
+         mSystemServiceManager.startService(IncidentCompanionService.class);
+         t.traceEnd();
+ 
+@@ -2521,7 +2540,7 @@ public final class SystemServer implements Dumpable {
+         }
+ 
+         // MMS service broker
+-        t.traceBegin("StartMmsService");
++        /* t.traceBegin("StartMmsService");
+         mmsService = mSystemServiceManager.startService(MmsServiceBroker.class);
+         t.traceEnd();
+ 
+@@ -2538,7 +2557,7 @@ public final class SystemServer implements Dumpable {
+             t.traceEnd();
+         } else {
+             Slog.d(TAG, "TranslationService not defined by OEM");
+-        }
++        } */
+ 
+         // NOTE: ClipboardService depends on ContentCapture and Autofill
+         t.traceBegin("StartClipboardService");
+@@ -2550,9 +2569,9 @@ public final class SystemServer implements Dumpable {
+         t.traceEnd();
+ 
+         // Perfetto TracingServiceProxy
+-        t.traceBegin("startTracingServiceProxy");
++        /*t.traceBegin("startTracingServiceProxy");
+         mSystemServiceManager.startService(TracingServiceProxy.class);
+-        t.traceEnd();
++        t.traceEnd();*/
+ 
+         // It is now time to start up the app processes...
+ 
+@@ -2639,7 +2658,7 @@ public final class SystemServer implements Dumpable {
+         mSystemServiceManager.setSafeMode(safeMode);
+ 
+         // Start device specific services
+-        t.traceBegin("StartDeviceSpecificServices");
++        /* t.traceBegin("StartDeviceSpecificServices");
+         final String[] classes = mSystemContext.getResources().getStringArray(
+                 R.array.config_deviceSpecificSystemServices);
+         for (final String className : classes) {
+@@ -2665,20 +2684,20 @@ public final class SystemServer implements Dumpable {
+ 
+         t.traceBegin("StartBootPhaseDeviceSpecificServicesReady");
+         mSystemServiceManager.startBootPhase(t, SystemService.PHASE_DEVICE_SPECIFIC_SERVICES_READY);
+-        t.traceEnd();
++        t.traceEnd();*/
+ 
+         t.traceBegin("AppSearchManagerService");
+         mSystemServiceManager.startService(APP_SEARCH_MANAGER_SERVICE_CLASS);
+         t.traceEnd();
+ 
++        /*t.traceBegin("AppCompatOverridesService");
++        mSystemServiceManager.startService(APP_COMPAT_OVERRIDES_SERVICE_CLASS);
++        t.traceEnd();*/
++
+         t.traceBegin("StartMediaCommunicationService");
+         mSystemServiceManager.startService(MEDIA_COMMUNICATION_SERVICE_CLASS);
+         t.traceEnd();
+ 
+-        t.traceBegin("AppCompatOverridesService");
+-        mSystemServiceManager.startService(APP_COMPAT_OVERRIDES_SERVICE_CLASS);
+-        t.traceEnd();
+-
+         // These are needed to propagate to the runnable below.
+         final NetworkManagementService networkManagementF = networkManagement;
+         final NetworkStatsService networkStatsF = networkStats;
+@@ -2722,6 +2741,9 @@ public final class SystemServer implements Dumpable {
+             }
+             t.traceEnd();
+ 
++            //Settings.Global.putInt(context.getContentResolver(), Settings.Global.DEVICE_PROVISIONED, 1);
++            //Settings.Secure.putInt(context.getContentResolver(), Settings.Secure.USER_SETUP_COMPLETE, 1);
++
+             // No dependency on Webview preparation in system server. But this should
+             // be completed before allowing 3rd party
+             final String WEBVIEW_PREPARATION = "WebViewFactoryPreparation";
+@@ -2738,7 +2760,7 @@ public final class SystemServer implements Dumpable {
+                 }, WEBVIEW_PREPARATION);
+             }
+ 
+-            if (mPackageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
++            /* if (mPackageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
+                 t.traceBegin("StartCarServiceHelperService");
+                 final SystemService cshs = mSystemServiceManager
+                         .startService(CAR_SERVICE_HELPER_SERVICE_CLASS);
+@@ -2749,14 +2771,14 @@ public final class SystemServer implements Dumpable {
+                     dpms.setDevicePolicySafetyChecker((DevicePolicySafetyChecker) cshs);
+                 }
+                 t.traceEnd();
+-            }
++            } */
+ 
+             // Enable airplane mode in safe mode. setAirplaneMode() cannot be called
+             // earlier as it sends broadcasts to other services.
+             // TODO: This may actually be too late if radio firmware already started leaking
+             // RF before the respective services start. However, fixing this requires changes
+             // to radio firmware and interfaces.
+-            if (safeMode) {
++            /*if (safeMode) {
+                 t.traceBegin("EnableAirplaneModeInSafeMode");
+                 try {
+                     connectivityF.setAirplaneMode(true);
+@@ -2764,7 +2786,7 @@ public final class SystemServer implements Dumpable {
+                     reportWtf("enabling Airplane Mode during Safe Mode bootup", e);
+                 }
+                 t.traceEnd();
+-            }
++            }*/
+             t.traceBegin("MakeNetworkManagementServiceReady");
+             try {
+                 if (networkManagementF != null) {
+@@ -2860,14 +2882,14 @@ public final class SystemServer implements Dumpable {
+             }
+             t.traceEnd();
+ 
+-            t.traceBegin("StartTethering");
++            /*t.traceBegin("StartTethering");
+             try {
+                 // TODO: hide implementation details, b/146312721.
+                 ConnectivityModuleConnector.getInstance().startModuleService(
+                         TETHERING_CONNECTOR_CLASS,
+                         PERMISSION_MAINLINE_NETWORK_STACK, service -> {
+                             ServiceManager.addService(Context.TETHERING_SERVICE, service,
+-                                    false /* allowIsolated */,
++                                    false,
+                                     DUMP_FLAG_PRIORITY_HIGH | DUMP_FLAG_PRIORITY_NORMAL);
+                         });
+             } catch (Throwable e) {
+@@ -2883,7 +2905,7 @@ public final class SystemServer implements Dumpable {
+             } catch (Throwable e) {
+                 reportWtf("Notifying CountryDetectorService running", e);
+             }
+-            t.traceEnd();
++            t.traceEnd();*/
+             t.traceBegin("MakeNetworkTimeUpdateReady");
+             try {
+                 if (networkTimeUpdaterF != null) {
+@@ -2921,7 +2943,7 @@ public final class SystemServer implements Dumpable {
+                 reportWtf("Notifying MediaRouterService running", e);
+             }
+             t.traceEnd();
+-            t.traceBegin("MakeMmsServiceReady");
++            /* t.traceBegin("MakeMmsServiceReady");
+             try {
+                 if (mmsServiceF != null) {
+                     mmsServiceF.systemRunning();
+@@ -2943,7 +2965,7 @@ public final class SystemServer implements Dumpable {
+             } catch (Throwable e) {
+                 reportWtf("Notifying incident daemon running", e);
+             }
+-            t.traceEnd();
++            t.traceEnd();*/
+ 
+             if (mIncrementalServiceHandle != 0) {
+                 t.traceBegin("MakeIncrementalServiceReady");
+@@ -2952,6 +2974,14 @@ public final class SystemServer implements Dumpable {
+             }
+         }, t);
+ 
++        t.traceBegin("StartCustomBluetoothScanService");
++        try {
++            mSystemServiceManager.startService(CustomBluetoothScanService.class);
++        } catch (Exception e) {
++            Slog.e(TAG, "Failed to start CustomBluetoothScanService", e);
++        }
++        t.traceEnd();
++
+         t.traceBegin("StartSystemUI");
+         try {
+             startSystemUi(context, windowManagerF);
+@@ -3000,12 +3030,12 @@ public final class SystemServer implements Dumpable {
+         t.traceEnd();
+     }
+ 
+-    private void startTextToSpeechManagerService(@NonNull Context context,
++    /* private void startTextToSpeechManagerService(@NonNull Context context,
+             @NonNull TimingsTraceAndSlog t) {
+         t.traceBegin("StartTextToSpeechManagerService");
+         mSystemServiceManager.startService(TEXT_TO_SPEECH_MANAGER_SERVICE_CLASS);
+         t.traceEnd();
+-    }
++    } */
+ 
+     private void startContentCaptureService(@NonNull Context context,
+             @NonNull TimingsTraceAndSlog t) {
+@@ -3102,3 +3132,4 @@ public final class SystemServer implements Dumpable {
+     }
+ 
+ }
++
