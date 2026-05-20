@@ -1,0 +1,19 @@
+windra@windra-VirtualBox:~/work/rk3568/rc254project$ git diff kernel-4.19/arch/arm64/boot/dts/rockchip/rk3568.dtsi
+diff --git a/kernel-4.19/arch/arm64/boot/dts/rockchip/rk3568.dtsi b/kernel-4.19/arch/arm64/boot/dts/rockchip/rk3568.dtsi
+index c73398a494..5e24368387 100644
+--- a/kernel-4.19/arch/arm64/boot/dts/rockchip/rk3568.dtsi
++++ b/kernel-4.19/arch/arm64/boot/dts/rockchip/rk3568.dtsi
+@@ -2301,7 +2301,7 @@
+                        SYS_STATUS_DUALVIEW     DMC_FREQ_LEVEL_HIGH
+                >;
+                auto-min-freq = <324000>;
+-               auto-freq-en = <0>;
++               auto-freq-en = <1>;
+                #cooling-cells = <2>;
+                status = "disabled";
+        };
+sdcard根目录创建 r254_soc目录
+开始抓日志：r254_soc目录创建start.txt ,sdcard 插入遥控器, 看到弹框提示抓取后拔出。
+结束抓日志：r254_soc目录 创建 stop.txt, sdcard 插入遥控器, 看到弹框提示 抓取完成后 拔出。
+把 r254_soc目录的soc_info.log拉到电脑，使用Python脚步生成图表。
+python3 soc_info.py ../../share/r254/soc_info.log

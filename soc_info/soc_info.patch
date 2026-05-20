@@ -1,0 +1,46 @@
+diff --git a/vendor/r254server/r254_log.cpp b/vendor/r254server/r254_log.cpp
+index 8b81be9785..7e1dba0622 100755
+--- a/vendor/r254server/r254_log.cpp
++++ b/vendor/r254server/r254_log.cpp
+@@ -845,7 +845,6 @@ int read_process_inotify_fd(int fd)
+     char sdcard_install_app_enable_file[200];
+     char sdcard_ota_enable_done_file[200];
+     char sdcard_ar8032_fw_file[200];
+-    char sdcard_get_soc_info_file[200];
+     char cmd[200];
+     int event_size;
+     int event_pos = 0;
+@@ -897,33 +896,6 @@ int read_process_inotify_fd(int fd)
+                     R254_LOGSERVER_LOG_TO_FILE("%s sdcard_had_ar8032_fw true\n", __func__);
+                 }
+ 
+-                sprintf(sdcard_get_soc_info_file, "%s/r254_soc/start.txt", sdcard_path);
+-                if(access(sdcard_get_soc_info_file, F_OK) == 0) {
+-                    R254_LOGSERVER_LOG_TO_FILE("%s start get soc info\n", __func__);
+-                    system(cmd);
+-                    memset(cmd, 0, sizeof(cmd));
+-                    sprintf(cmd, "%s%s", R254_SYSTEM_BIN_ENV, "am broadcast -a R254.DEBUG_ACTION_BROADCAST --es received_text \"抓取SOC_INFO\"");
+-                    system(cmd);
+-                    start_get_soc_run_status_info();
+-                }
+-
+-                sprintf(sdcard_get_soc_info_file, "%s/r254_soc/stop.txt", sdcard_path);
+-                if(access(sdcard_get_soc_info_file, F_OK) == 0) {
+-                    R254_LOGSERVER_LOG_TO_FILE("%s stop get soc info\n", __func__);
+-                    stop_get_soc_run_status_info();
+-                    sleep(3);
+-                    system("sync");
+-                    memset(cmd, 0, sizeof(cmd));
+-                    sprintf(cmd, "%scp /mnt/soc_info.log %s/r254_soc/", R254_SYSTEM_BIN_ENV, sdcard_path);
+-                    R254_LOGSERVER_LOG_TO_FILE("%s mv r254_soc cmd: %s\n", __func__, cmd);
+-                    system(cmd);
+-                    system("sync");
+-                    system("rm /mnt/soc_info.log");
+-                    memset(cmd, 0, sizeof(cmd));
+-                    sprintf(cmd, "%s%s", R254_SYSTEM_BIN_ENV, "am broadcast -a R254.DEBUG_ACTION_BROADCAST --es received_text \"SOC_INFO抓取完成\"");
+-                    system(cmd);
+-                }
+-
+                 if(access(sdcard_ota_enable_file, F_OK) == 0) {
+                     unsigned long long can_ota_size = 2147483648;//(1024*1024*1024*2);
+                     unsigned long long avail_size = r254_sdcard_ota_disk_avail_size("/data");

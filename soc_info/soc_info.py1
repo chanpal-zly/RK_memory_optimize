@@ -1,0 +1,447 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import re
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from datetime import datetime
+import numpy as np
+import sys
+import os
+import argparse
+
+def parse_soc_log(file_path):
+    """
+    Parse SOC log file
+    """
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+    
+    # Initialize data structures
+    timestamps = []
+    ddr_usage = []
+    free_memory = []  # Available memory in MB
+    gpu_usage = []
+    cpu_usages = {}  # Usage for each CPU core
+    cpu_count = 0
+    
+    current_time = None
+    
+    for line in lines:
+        line = line.strip()
+        
+        # Skip empty lines
+        if not line:
+            continue
+            
+        # Match timestamp [HH:MM:SS.mmm]
+        time_match = re.match(r'\[(\d{2}:\d{2}:\d{2}\.\d{3})\]:', line)
+        if time_match:
+            current_time = time_match.group(1)
+            # Keep only seconds, ignore milliseconds
+            try:
+                time_obj = datetime.strptime(current_time.split('.')[0], '%H:%M:%S')
+                timestamps.append(time_obj)
+            except ValueError:
+                print("Warning: Could not parse time: %s" % current_time)
+            continue
+            
+        # Match DDR usage
+        ddr_match = re.match(r'ddr:\s*(\d+)@', line)
+        if ddr_match and current_time and timestamps:
+            try:
+                ddr_usage.append(float(ddr_match.group(1)))
+            except ValueError:
+                ddr_usage.append(0.0)
+            continue
+            
+        # Match free memory
+        free_mem_match = re.match(r'free_mem_MB:\s*(\d+)', line)
+        if free_mem_match and current_time and timestamps:
+            try:
+                free_memory.append(float(free_mem_match.group(1)))
+            except ValueError:
+                free_memory.append(0.0)
+            continue
+            
+        # Match GPU usage
+        gpu_match = re.match(r'gpu:\s*(\d+)@', line)
+        if gpu_match and current_time and timestamps:
+            try:
+                gpu_usage.append(float(gpu_match.group(1)))
+            except ValueError:
+                gpu_usage.append(0.0)
+            continue
+            
+        # Match CPU usage
+        cpu_match = re.match(r'CPU(\d+):', line)
+        if cpu_match and current_time and timestamps:
+            cpu_id = int(cpu_match.group(1))
+            cpu_count = max(cpu_count, cpu_id + 1)
+            
+            # Extract idle value
+            idle_match = re.search(r'(\d+\.?\d*)%\s*idle', line)
+            if idle_match:
+                try:
+                    idle_value = float(idle_match.group(1))
+                    cpu_usage = 100 - idle_value
+                    
+                    if cpu_id not in cpu_usages:
+                        cpu_usages[cpu_id] = []
+                    cpu_usages[cpu_id].append(cpu_usage)
+                except ValueError:
+                    # If can't parse idle value, use 0
+                    if cpu_id not in cpu_usages:
+                        cpu_usages[cpu_id] = []
+                    cpu_usages[cpu_id].append(0.0)
+    
+    # Ensure all arrays have the same length
+    min_length = len(timestamps)
+    
+    # Trim arrays if needed
+    if len(ddr_usage) > min_length:
+        ddr_usage = ddr_usage[:min_length]
+    
+    # For free memory, if missing some entries, fill with None
+    if len(free_memory) < min_length:
+        # Pad with None values
+        free_memory.extend([None] * (min_length - len(free_memory)))
+    elif len(free_memory) > min_length:
+        free_memory = free_memory[:min_length]
+    
+    if len(gpu_usage) > min_length:
+        gpu_usage = gpu_usage[:min_length]
+    
+    # Ensure all CPU arrays have same length
+    for cpu_id in cpu_usages:
+        if len(cpu_usages[cpu_id]) > min_length:
+            cpu_usages[cpu_id] = cpu_usages[cpu_id][:min_length]
+    
+    return timestamps, ddr_usage, free_memory, gpu_usage, cpu_usages, cpu_count
+
+def plot_soc_data(file_path, output_file=None, show_plot=True):
+    """
+    Plot SOC data
+    """
+    # Parse data
+    timestamps, ddr_usage, free_memory, gpu_usage, cpu_usages, cpu_count = parse_soc_log(file_path)
+    
+    if not timestamps:
+        print("No valid data found")
+        return
+    
+    # Check data consistency
+    print("="*60)
+    print("Parsing file: %s" % file_path)
+    print("="*60)
+    print("Data summary:")
+    print("  Timestamps: %d" % len(timestamps))
+    print("  DDR readings: %d" % len(ddr_usage))
+    print("  Free memory readings: %d" % len([x for x in free_memory if x is not None]))
+    print("  GPU readings: %d" % len(gpu_usage))
+    print("  CPU cores detected: %d" % cpu_count)
+    
+    for cpu_id in cpu_usages:
+        print("  CPU%d readings: %d" % (cpu_id, len(cpu_usages[cpu_id])))
+    
+    # Find minimum length
+    min_len = min(len(timestamps), len(ddr_usage), len(gpu_usage))
+    for cpu_id in cpu_usages:
+        min_len = min(min_len, len(cpu_usages[cpu_id]))
+    
+    if min_len == 0:
+        print("Error: No valid data to plot")
+        return
+    
+    # Trim all arrays to minimum length
+    timestamps = timestamps[:min_len]
+    ddr_usage = ddr_usage[:min_len]
+    free_memory = free_memory[:min_len] if len(free_memory) >= min_len else free_memory
+    gpu_usage = gpu_usage[:min_len]
+    
+    for cpu_id in cpu_usages:
+        cpu_usages[cpu_id] = cpu_usages[cpu_id][:min_len]
+    
+    # Create figure with subplots - now 3 subplots
+    fig = plt.figure(figsize=(16, 12))
+    
+    # Convert timestamps for matplotlib
+    mpl_timestamps = mdates.date2num(timestamps)
+    
+    # Plot 1: Free Memory
+    ax1 = plt.subplot(3, 1, 1)
+    
+    # Calculate average free memory (ignore None values)
+    valid_free_mem = [x for x in free_memory if x is not None]
+    if valid_free_mem:
+        free_mem_avg = sum(valid_free_mem) / len(valid_free_mem)
+        
+        # Filter out None values for plotting
+        plot_timestamps = []
+        plot_free_mem = []
+        for i, mem in enumerate(free_memory):
+            if mem is not None:
+                plot_timestamps.append(mpl_timestamps[i])
+                plot_free_mem.append(mem)
+        
+        if plot_free_mem:
+            # Plot free memory
+            ax1.plot(plot_timestamps, plot_free_mem, 
+                     color='darkgreen', marker='D', markersize=5, linewidth=2, 
+                     label='Free Memory (avg: %.1f MB)' % free_mem_avg)
+            
+            # Find min and max for y-axis limits
+            free_mem_min = min(plot_free_mem)
+            free_mem_max = max(plot_free_mem)
+            
+            # Add some padding to y-axis
+            y_padding = max(10, (free_mem_max - free_mem_min) * 0.1)
+            ax1.set_ylim(free_mem_min - y_padding, free_mem_max + y_padding)
+        else:
+            ax1.text(0.5, 0.5, 'No free memory data', 
+                     horizontalalignment='center', verticalalignment='center',
+                     transform=ax1.transAxes, fontsize=12)
+            ax1.set_ylim(0, 100)
+    else:
+        ax1.text(0.5, 0.5, 'No free memory data', 
+                 horizontalalignment='center', verticalalignment='center',
+                 transform=ax1.transAxes, fontsize=12)
+        ax1.set_ylim(0, 100)
+    
+    ax1.set_ylabel('Free Memory (MB)', fontsize=12)
+    ax1.set_title('Available Memory Over Time', fontsize=14, fontweight='bold')
+    ax1.grid(True, alpha=0.3)
+    ax1.legend(loc='upper left', fontsize=10)
+    
+    # Plot 2: DDR and GPU usage
+    ax2 = plt.subplot(3, 1, 2, sharex=ax1)
+    
+    # Calculate averages
+    ddr_avg = sum(ddr_usage) / len(ddr_usage) if ddr_usage else 0
+    gpu_avg = sum(gpu_usage) / len(gpu_usage) if gpu_usage else 0
+    
+    # Plot DDR
+    ax2.plot(mpl_timestamps, ddr_usage, 
+             color='blue', marker='o', markersize=4, linewidth=2, 
+             label='DDR Usage (avg: %.1f%%)' % ddr_avg)
+    
+    # Plot GPU
+    ax2.plot(mpl_timestamps, gpu_usage, 
+             color='red', marker='s', markersize=4, linewidth=2,
+             label='GPU Usage (avg: %.1f%%)' % gpu_avg)
+    
+    ax2.set_ylabel('Usage (%)', fontsize=12)
+    ax2.set_title('DDR and GPU Usage Over Time', fontsize=14, fontweight='bold')
+    ax2.set_ylim(0, max(100, max(ddr_usage + gpu_usage) * 1.1))  # Auto-scale with min 100
+    ax2.grid(True, alpha=0.3)
+    ax2.legend(loc='upper left', fontsize=10)
+    
+    # Plot 3: CPU usage
+    ax3 = plt.subplot(3, 1, 3, sharex=ax1)
+    
+    colors = ['green', 'magenta', 'orange', 'purple', 'cyan', 'brown', 'pink', 'gray', 'olive', 'navy']
+    
+
+    legend_labels = []
+    legend_lines = []
+    
+    for cpu_id in sorted(cpu_usages.keys()):
+        if cpu_usages[cpu_id]:
+            cpu_data = cpu_usages[cpu_id]
+            cpu_avg = sum(cpu_data) / len(cpu_data)
+            color_idx = cpu_id % len(colors)
+            
+            line, = ax3.plot(mpl_timestamps, cpu_data,
+                            color=colors[color_idx], marker='^', markersize=4, linewidth=2)
+            
+            legend_lines.append(line)
+            legend_labels.append('CPU%d (avg: %.1f%%)' % (cpu_id, cpu_avg))
+    
+    ax3.set_ylabel('CPU Usage (%)', fontsize=12)
+    ax3.set_title('CPU Core Usage Over Time', fontsize=14, fontweight='bold')
+    ax3.set_ylim(0, 100)
+    ax3.grid(True, alpha=0.3)
+    
+    if legend_lines:
+        if cpu_count <= 4:
+            ncol = 1
+        elif cpu_count <= 8:
+            ncol = 2
+        else:
+            ncol = 3
+        
+
+        ax3.legend(legend_lines, legend_labels, loc='upper left', fontsize=9, ncol=ncol)
+    
+    # Format x-axis
+    ax3.set_xlabel('Time', fontsize=12)
+    
+    # Calculate time range in seconds
+    if len(timestamps) > 1:
+        total_seconds = (timestamps[-1] - timestamps[0]).total_seconds()
+        
+        # Set x-axis format based on time range
+        ax3.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+        
+        # Set appropriate tick interval
+        if total_seconds <= 60:  # Up to 1 minute
+            interval = max(1, int(total_seconds / 10))
+        elif total_seconds <= 300:  # Up to 5 minutes
+            interval = max(5, int(total_seconds / 10))
+        elif total_seconds <= 1800:  # Up to 30 minutes
+            interval = max(30, int(total_seconds / 10))
+        else:  # More than 30 minutes
+            interval = max(60, int(total_seconds / 10))
+        
+        # Ensure interval is at least 1
+        interval = max(1, interval)
+        ax3.xaxis.set_major_locator(mdates.SecondLocator(interval=interval))
+    else:
+        ax3.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+    
+    # Rotate x-axis labels for better readability
+    plt.setp(ax3.xaxis.get_majorticklabels(), rotation=45, ha='right')
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Generate output filename if not provided
+    if output_file is None:
+        # Use input filename with .png extension
+        base_name = os.path.basename(file_path)
+        name_without_ext = os.path.splitext(base_name)[0]
+        output_file = "%s_usage_plot.png" % name_without_ext
+    
+    # Save figure
+    plt.savefig(output_file, dpi=150, bbox_inches='tight')
+    print("\nChart saved as: %s" % output_file)
+    
+    # Show plot if requested
+    if show_plot:
+        plt.show()
+    else:
+        plt.close()
+    
+    # Print detailed statistics
+    print("\n" + "="*60)
+    print("DETAILED STATISTICS")
+    print("="*60)
+    
+    if timestamps:
+        print("Time range: %s to %s" % 
+              (timestamps[0].strftime('%H:%M:%S'), timestamps[-1].strftime('%H:%M:%S')))
+        print("Duration: %.1f seconds" % 
+              ((timestamps[-1] - timestamps[0]).total_seconds() if len(timestamps) > 1 else 0))
+        print("Data points: %d" % len(timestamps))
+    
+    if valid_free_mem:
+        print("\nFree Memory (MB):")
+        print("  Minimum: %.1f MB" % min(valid_free_mem))
+        print("  Maximum: %.1f MB" % max(valid_free_mem))
+        print("  Average: %.1f MB" % free_mem_avg)
+        print("  Available data points: %d" % len(valid_free_mem))
+    else:
+        print("\nFree Memory: No data available")
+    
+    if ddr_usage:
+        print("\nDDR Usage:")
+        print("  Minimum: %.1f%%" % min(ddr_usage))
+        print("  Maximum: %.1f%%" % max(ddr_usage))
+        print("  Average: %.1f%%" % ddr_avg)
+    
+    if gpu_usage:
+        print("\nGPU Usage:")
+        print("  Minimum: %.1f%%" % min(gpu_usage))
+        print("  Maximum: %.1f%%" % max(gpu_usage))
+        print("  Average: %.1f%%" % gpu_avg)
+    
+    for cpu_id in sorted(cpu_usages.keys()):
+        if cpu_usages[cpu_id]:
+            cpu_data = cpu_usages[cpu_id]
+            cpu_min = min(cpu_data)
+            cpu_max = max(cpu_data)
+            cpu_avg = sum(cpu_data) / len(cpu_data)
+            
+            print("\nCPU%d Usage:" % cpu_id)
+            print("  Minimum: %.1f%%" % cpu_min)
+            print("  Maximum: %.1f%%" % cpu_max)
+            print("  Average: %.1f%%" % cpu_avg)
+    
+    print("\n" + "="*60)
+
+def main():
+    """
+    Main function with command line argument parsing
+    """
+    # Create argument parser
+    parser = argparse.ArgumentParser(
+        description='Parse and visualize Android SOC system information from log files',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  %(prog)s soc_info.log                    # Parse soc_info.log and show plot
+  %(prog)s soc_info.log -o output.png      # Save plot as output.png
+  %(prog)s soc_info.log --no-show          # Parse but don't show the plot
+  %(prog)s -h                              # Show this help message
+        '''
+    )
+    
+    # Add arguments
+    parser.add_argument(
+        'log_file',
+        help='Path to the SOC info log file (required)'
+    )
+    
+    parser.add_argument(
+        '-o', '--output',
+        dest='output_file',
+        help='Output image file name (default: <input_filename>_usage_plot.png)'
+    )
+    
+    parser.add_argument(
+        '--no-show',
+        dest='show_plot',
+        action='store_false',
+        default=True,
+        help='Do not display the plot (only save to file)'
+    )
+    
+    parser.add_argument(
+        '-v', '--version',
+        action='version',
+        version='SOC Info Parser v1.2 (with memory support and improved legends)'
+    )
+    
+    # Parse arguments
+    args = parser.parse_args()
+    
+    # Check if log file exists
+    if not os.path.exists(args.log_file):
+        print("Error: Log file not found: %s" % args.log_file)
+        sys.exit(1)
+    
+    # Check Python version
+    if sys.version_info < (3, 0):
+        print("Warning: This script is optimized for Python 3 but will try to run with Python 2")
+    
+    try:
+        # Parse and plot data
+        plot_soc_data(
+            file_path=args.log_file,
+            output_file=args.output_file,
+            show_plot=args.show_plot
+        )
+        
+        print("Processing completed successfully!")
+        
+    except FileNotFoundError as e:
+        print("Error: %s" % str(e))
+        sys.exit(1)
+    except Exception as e:
+        print("Error processing file: %s" % str(e))
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
