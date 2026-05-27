@@ -1,0 +1,56 @@
+应用进程	主要功能	裁剪建议	裁剪方案	进度
+DisplayCutoutEmulationCornerOverlay	模拟圆角刘海屏的显示覆盖层	可以裁剪		已裁剪
+DisplayCutoutEmulationDoubleOverlay	模拟双刘海屏双挖孔屏的显示覆盖层	可以裁剪		已裁剪
+MediaProviderLegacy	旧版媒体库提供程序的兼容组件	可以裁剪		已裁剪
+NavigationBarModeGesturalOverlayWideBack	宽手势返回区域的配置	可以裁剪		已裁剪
+CompanionDeviceManager	配套设备管理（如蓝牙配对设备）	可以裁剪		已裁剪
+OneHandedModeGesturalOverlay	单手模式手势的配置覆盖层	可以裁剪		已裁剪
+DisplayCutoutEmulationHoleOverlay	模拟居中挖孔屏覆盖层	可以裁剪		已裁剪
+DisplayCutoutEmulationTallOverlay	模拟长条形刘海屏的显示覆盖层	可以裁剪		已裁剪
+NavigationBarMode3ButtonOverlay	传统三键导航栏的配置覆盖层	可以裁剪		已裁剪
+BackupRestoreConfirmation	备份与恢复确认服务	可以裁剪		已裁剪
+SettingsIntelligence	系统设置的智能辅助功能（如搜索）	可以裁剪		已裁剪
+NavigationBarModeGesturalOverlayExtraWideBack	超宽手势返回区域的配置	可以裁剪		已裁剪
+SecureElement	安全元件服务（用于eSE或NFC支付）	可以裁剪		已裁剪
+LocalTransport	本地备份传输服务	可以裁剪		已裁剪
+DisplayCutoutEmulationWaterfallOverlay	模拟瀑布屏覆盖层	可以裁剪		已裁剪
+BookmarkProvider	浏览器书签提供程序	可以裁剪		已裁剪
+InProcessTethering	进程内网络共享（热点、USB网络共享）	可以裁剪	/apex/裁剪	已裁剪
+NavigationBarModeGesturalOverlayNarrowBack	窄手势返回区域的配置	可以裁剪		已裁剪
+ContactsProvider	通讯录数据存储提供程序	可以裁剪		已裁剪
+OsuLogin	在线注册服务（可能用于运营商服务）	可以裁剪	/apex/裁剪	已裁剪
+RemoteProvisioner	远程配置服务	可以裁剪	删除.bp文件裁剪	已裁剪
+DownloadProvider	系统下载管理器，管理浏览器等应用的下载任务	尝试裁剪（裁剪后是否影响应用下载功能）		已裁剪
+InputDevices	输入设备管理	可以裁剪（裁剪后测试SD卡等输入设备功能是否正常）	SD卡读取正常	已裁剪
+FontNotoSerifSourceOverlay	Noto Serif 字体的叠加层	可以裁剪，需跟应用同事确认是否有特殊字体需求	暂未发现异常	已裁剪
+UserDictionaryProvider	用户词典提供程序	可以裁剪（裁剪后，测试是否影响输入法）	暂未发现异常	已裁剪
+webview	网页浏览器	不可裁剪	裁剪后，webview网页会崩溃	
+NavigationBarModeGesturalOverlay	全面屏手势导航的配置覆盖层	不可裁剪	裁剪后左右滑返回上一界面无效	
+PermissionController	权限管理	不可裁剪		
+DynamicSystemInstallationService	动态系统安装服务（A/B系统更新相关）	不可裁剪		
+DocumentsUI	系统文件选择器	不可裁剪		
+ExternalStorageProvider	外部存储设备（SD卡）的访问支持	不可裁剪		
+InProcessNetworkStack	进程内网络栈	不可裁剪		
+ServiceConnectivityResources	网络连接相关资源	不可裁剪		
+ModuleMetadata	模块元数据服务	不可裁剪		
+CertInstaller	证书安装器	不可裁剪		
+framework-res	Android框架资源包，包含系统核心UI资源、字符串等	不可裁剪		
+MtpService	Media Transfer Protocol服务，用于连接电脑传输文件	不可裁剪		
+Provision	设备首次开机设置向导（Setup Wizard）	不可裁剪		
+SettingsProvider	存储和提供系统设置项的数据库	不可裁剪		
+ExtShared	外部存储共享服务	不可裁剪		
+Gallery2	系统相册应用	不可裁剪		
+ExtServices	扩展服务	不可裁剪		
+ServiceWifiResources	Wi-Fi服务资源	不可裁剪		
+PackageInstaller	系统应用安装器，负责APK的安装与卸载	不可裁剪		
+PotensicEve	飞控应用	不可裁剪		
+StorageManager	存储空间管理和配置	不可裁剪		
+Settings	系统设置应用	不可裁剪		
+PlatformNetworkPermissionConfig	网络权限配置	不可裁剪		
+Shell	Android系统Shell	不可裁剪		
+MediaProvider	系统媒体库（图片、视频、音频）的管理者	不可裁剪		
+FusedLocation	融合定位服务（综合GPS、网络定位）	不可裁剪		
+SystemUI	系统用户界面，包括状态栏、导航栏、通知中心等	不可裁剪		
+PlatformCaptivePortalLogin	captive portal（强制门户，如Wi-Fi登录页面）检测	不可裁剪		
+PinyinIME	拼音输入法	不可裁剪		
+framework-res__auto_generated_rro_vendor	由厂商自动生成的运行时资源覆盖包	不可裁剪		
